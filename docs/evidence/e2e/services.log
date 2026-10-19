@@ -1,0 +1,17 @@
+   ▲ Next.js 15.5.28
+   - Local:        http://127.0.0.1:3000
+   - Network:      http://127.0.0.1:3000
+
+ ✓ Starting...
+demo-fixture ready
+{"service":"api","event":"ready","mode":"local-prototype"}
+ ✓ Ready in 698ms
+{"service":"worker","event":"ready","concurrency":1}
+{"service":"worker","event":"job.completed","jobId":"a1a2e3eb-dac1-4204-9dc3-6ffb5e4e0bc3","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"e0247324-2eaf-421b-a594-4ab9abbdba13","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"39b95af3-1b26-4cab-8f07-3d9147d3bc3c","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"6a2b6cf1-65ad-4996-a8bd-087506d3dc28","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"a181c891-d33d-4264-93dd-358f31551343","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"b8648681-8060-48ee-9e61-05726cf7b7b9","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"126c394a-43a2-4adf-a87d-9f6afd1a773f","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"e4677952-22dc-4b5e-bd38-856babf15a87","orgId":"10000000-0000-4000-8000-000000000001"}

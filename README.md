@@ -3,6 +3,8 @@
 Kontrollü iş adımlarını sürümlü test modeline ve gerçek Chromium sonuçlarına
 dönüştüren yerel geliştirme prototipi. Temel ürün belgeleri [docs/product](docs/product/README.md)
 altında, geliştirme durumu [docs/PROGRESS.md](docs/PROGRESS.md) dosyasında.
+Ekran görüntüleri, test günlükleri ve oturum anahtarlarından temizlenmiş demo
+veritabanları [kanıt arşivinde](docs/evidence/README.md) bulunur.
 
 ## Çalıştırma
 

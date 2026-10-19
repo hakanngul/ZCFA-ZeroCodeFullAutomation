@@ -26,8 +26,11 @@ komut değildir. Gate A/B müşteri araştırması yapılmış kabul edilmedi.
 Bu artım tam MVP/enterprise sürümü değildir. Üretim deploy/publish yapılmadı.
 Başlangıç deposu boş ve `work` dalı unborn idi; ilk geliştirme oturumunun sonunda
 commit/push yoktu. Kullanıcı 19 Ekim 2026'da kaynakları GitHub'a göndermemizi istedi.
-Gönderime kaynak kod, ürün belgeleri, lockfile ve CI workflow dahil edilir;
-yerel veritabanı, oturumlar, bağımlılık dizini ve üretilen kanıt dosyaları hariçtir.
+İlk gönderime kaynak kod, ürün belgeleri, lockfile ve CI workflow dahil edildi.
+Kullanıcının ek isteğiyle ekran görüntüleri, test günlükleri ve oturum anahtarları
+temizlenmiş demo veritabanı kopyaları `docs/evidence/` altında ayrıca arşivlendi.
+Canlı çalışma dizinleri, oturum anahtarları, bağımlılık dizini ve derleme önbelleği
+Git dışında kalır; bağımlılıklar ve build lockfile üzerinden yeniden üretilir.
 Güncel commit ve uzak dal durumu Git üzerinden kontrol edilmelidir. Sonraki ajan
 mevcut değişiklikleri korumalı; reset/clean yapmamalı.
 
