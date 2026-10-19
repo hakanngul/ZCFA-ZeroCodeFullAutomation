@@ -1,0 +1,41 @@
+{
+  "name": "zerocode",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=24.0.0 <25"
+  },
+  "scripts": {
+    "dev": "tsx scripts/dev.ts",
+    "dev:web": "next dev apps/web --hostname 127.0.0.1 --port 3000",
+    "dev:api": "tsx apps/api/src/main.ts",
+    "dev:worker": "tsx apps/worker/src/main.ts",
+    "dev:fixture": "tsx tests/fixtures/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/domain.test.ts tests/api.test.ts",
+    "test:e2e": "tsx --test --test-concurrency=1 tests/e2e.test.ts",
+    "build": "next build apps/web",
+    "format": "prettier --write apps packages scripts tests package.json tsconfig.json pnpm-workspace.yaml .github README.md docs/api.md docs/PROGRESS.md docs/decisions",
+    "format:check": "prettier --check apps packages scripts tests package.json tsconfig.json pnpm-workspace.yaml .github README.md docs/api.md docs/PROGRESS.md docs/decisions"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "fastify": "^5.6.2",
+    "lucide-react": "^0.468.0",
+    "next": "^15.5.0",
+    "playwright": "^1.56.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}

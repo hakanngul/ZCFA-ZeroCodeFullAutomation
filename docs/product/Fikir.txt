@@ -1,0 +1,1142 @@
+Product Idea: Zero-Code Full Test Automation Platform
+
+I want to design an enterprise-grade, web-based Zero-Code Full Test Automation Platform that can be sold to companies as a centralized test automation platform.
+
+The primary goal is to enable users such as QA Analysts, Manual Testers, Business Analysts, and Product Analysts — including users with little or no programming experience — to rapidly design, create, execute, monitor, analyze, maintain, and manage automated tests without having to learn a programming language or a test automation framework.
+
+This should not be a simple test recorder or a traditional no-code testing tool.
+
+The goal is to build a complete Test Automation Platform that abstracts the technical complexity of automation and allows users to work with tests at a business and visual level while technical users can still access deeper technical details when needed.
+
+Core Principle
+Human defines the test intent. The platform handles the automation.
+
+For example, a user should be able to define:
+
+"When a valid user logs in, the Dashboard should be displayed and the user's balance should be visible."
+
+The platform should automatically handle the technical aspects required to execute that scenario, including:
+
+Application discovery
+Element identification
+Locator generation and management
+Test step creation
+Test data generation and management
+Assertions
+Synchronization and waits
+Web/API/Mobile automation
+Test execution
+Parallel execution
+Failure analysis
+Reporting
+Self-healing
+Test maintenance
+Scheduling
+CI/CD integration
+Users should not be required to understand Selenium, Playwright, Appium, XPath, CSS selectors, Java, JavaScript, Python, or other automation-specific technologies.
+
+User Experience
+Every test should be available through three different views:
+
+1. Business View
+
+For example:
+
+Login with valid user Verify Dashboard is visible Verify balance Logout
+
+2. Visual / Flow View
+
+For example:
+
+Open Page → Enter Username → Enter Password → Click Login → Verify Dashboard
+
+3. Technical View
+
+For advanced users:
+
+Generated locators
+Generated automation implementation
+Network requests
+Console logs
+Screenshots
+Execution traces
+Technical logs
+API requests
+Detailed execution information
+All three views should represent the same underlying test model, not separate implementations.
+
+Core Capabilities
+The platform should include:
+
+Test Design
+
+Visual test designer
+Drag-and-drop or action-based test creation
+Natural language test definition
+Reusable test steps
+Test templates
+Variables and parameters
+Conditions
+Loops
+Data-driven testing
+Application Interaction
+
+Browser/application discovery
+Visual element selection
+Automatic locator generation
+Locator prioritization
+Locator stability analysis
+Dynamic element handling
+Automation
+
+Web automation
+API automation
+Mobile automation
+Cross-browser execution
+Multi-environment support
+Parallel execution
+Distributed execution
+Validation
+
+UI assertions
+API assertions
+Database validation
+Business-rule validation
+Cross-system validation
+Execution
+
+Run now
+Scheduled execution
+Regression suites
+Smoke suites
+Parallel execution
+Retry policies
+Environment selection
+CI/CD triggered execution
+Failure Management
+
+Screenshots
+Video
+Execution traces
+Console logs
+Network logs
+Failure classification
+Root-cause analysis
+Distinguishing test failures from application failures
+Self-Healing
+
+Locator healing
+Automatic test repair
+Validation of generated fixes
+Repair history
+Confidence scores
+Configurable human approval policies
+Reporting
+
+Execution dashboards
+Pass/fail analytics
+Failure analysis
+Test trends
+Flaky-test detection
+Environment statistics
+Release quality dashboards
+Enterprise
+
+Multi-tenancy
+Organizations
+Projects
+RBAC
+Audit logs
+Secrets management
+Environment management
+SSO
+LDAP / enterprise authentication
+Git integration
+Jira / Azure DevOps integration
+Jenkins / GitLab / Bitbucket integration
+Webhooks
+Public APIs
+Technical Vision
+The platform UI and the test execution infrastructure should be decoupled.
+
+A possible architecture:
+
+Web UI ↓ Platform API / Control Plane ↓ Test Management / Scheduler ↓ Execution Orchestrator ↓ Distributed Test Workers ↓ Web / API / Mobile Automation Engines
+
+The execution layer should run using Docker containers and support horizontal scaling through Kubernetes.
+
+Automation engines should be hidden behind an abstraction layer.
+
+For example:
+
+Business Test ↓ Automation Model ↓ Execution Engine ↓ Playwright / Selenium / Appium / API Engine
+
+Tests created by users should not be tightly coupled to a specific automation framework.
+
+Product Differentiation
+The product should not simply be:
+
+A test recorder
+A Selenium wrapper
+A visual scripting tool
+A basic codeless testing tool
+A no-code form builder
+The core value proposition should be:
+
+Build and manage the complete test automation lifecycle without writing automation code.
+
+The platform should manage the complete lifecycle:
+
+Design → Automate → Execute → Validate → Analyze → Heal → Maintain → Report
+
+Innovation Goal
+Do not stop at the concept of "No-Code Test Automation."
+
+Explore how the product can become significantly more differentiated and defensible through:
+
+AI-assisted test generation
+Application discovery
+Intelligent locator generation
+Risk-based test selection
+Change impact analysis
+Self-healing
+Automatic failure classification
+Root-cause analysis
+Autonomous test maintenance
+Test optimization
+Flaky-test detection
+Intelligent regression selection
+Natural language test creation
+AI-assisted exploratory testing
+Application knowledge graphs
+Reusable business flows
+Cross-platform test abstraction
+Expected Output
+Create a comprehensive product strategy and technical design for this idea.
+
+Cover the following areas in detail:
+
+Core value proposition
+Target users
+Target enterprise segments
+User pain points
+Differentiation strategy
+Competitor categories
+Core product modules
+Complete user journey
+MVP scope
+V1, V2, and long-term roadmap
+Technical architecture
+Microservice architecture
+Frontend architecture
+Backend architecture
+Test execution architecture
+Docker/Kubernetes architecture
+Test model and domain model
+Automation abstraction layer
+AI capabilities
+Self-healing architecture
+Multi-tenant enterprise architecture
+RBAC and security
+CI/CD integrations
+Scalability strategy
+Observability
+Data model
+API architecture
+Main UI screens and workflows
+SaaS / On-premise / Hybrid deployment and pricing models
+Major technical and commercial risks
+Most importantly, answer this question:
+
+What could make this product 10x more valuable and meaningfully different from today's traditional no-code/codeless test automation platforms?
+
+Do not answer only with a feature list. Identify the actual innovation opportunities, the underlying user problems they solve, how they create measurable value, and what could create a sustainable competitive advantage. I have a product idea called:
+
+Zero-Code Full Test Automation Platform
+
+Before creating a roadmap, architecture, feature list, or implementation plan, act as a highly critical product strategist and challenge the idea.
+
+Do not simply agree with my assumptions.
+
+Analyze the idea from first principles and answer:
+
+What exact problem are we solving?
+Who experiences this problem?
+How are they solving it today?
+Why are current solutions insufficient?
+Why would a company pay for this product?
+What makes this different from existing no-code/codeless test automation products?
+Is "zero-code" actually the right core value proposition?
+Which parts of the idea are genuinely valuable and which are commodity features?
+Which assumptions are the riskiest?
+What could make this product fail?
+What would make users reject it?
+What would make enterprise customers adopt it?
+What should NOT be built?
+What is the smallest version that could prove the core idea?
+What could create a sustainable competitive advantage?
+Then identify the 3-5 strongest product opportunities and 3-5 biggest risks.
+
+Do not create a roadmap yet.
+
+Do not jump into implementation details yet.
+
+Your goal at this stage is to challenge and sharpen the product concept.
+
+MASTER PRODUCT DEVELOPMENT PROMPT
+ROLE
+Act as a Product Strategist, Product Manager, UX Architect, Solution Architect, Principal Software Engineer, QA Architect, DevOps Architect, and Technical Reviewer working together as a senior product team.
+
+Your job is not simply to generate ideas or code.
+
+Your job is to take the product idea below from raw concept → validated product concept → product definition → PRD → UX → MVP → technical architecture → engineering backlog → implementation strategy → validation strategy.
+
+You must challenge assumptions, identify risks, simplify where possible, and continuously improve the original idea.
+
+Do not blindly accept the original concept.
+
+Your goal is to discover the strongest, most practical, differentiated, scalable, and commercially viable version of the product.
+
+PRODUCT IDEA
+I want to build an enterprise-grade, web-based:
+
+"Zero-Code Full Test Automation Platform"
+The product should enable people such as:
+
+QA Analysts
+Manual Testers
+Business Analysts
+Product Analysts
+Less technical QA users
+Other non-programming users
+to create, execute, inspect, maintain, and manage automated tests without needing to write automation code or understand automation frameworks.
+
+The platform should be sold to companies as an enterprise product and should support centralized test automation management.
+
+The fundamental idea is:
+
+Humans define test intent. The platform handles the automation.
+
+For example, a non-technical analyst should be able to define something like:
+
+"When a valid user logs in, the Dashboard should open and the account balance should be displayed."
+
+The platform should handle the technical implementation required to automate and execute this scenario.
+
+Potential responsibilities of the platform include:
+
+Application discovery
+Element discovery
+Element selection
+Locator generation
+Locator management
+Test design
+Test flow creation
+Test data management
+Assertions
+Synchronization
+Test execution
+Parallel execution
+Test scheduling
+Reporting
+Failure analysis
+Test maintenance
+Self-healing
+CI/CD integration
+Environment management
+Enterprise access control
+However, these are assumptions, not final requirements.
+
+You must determine which of these are truly valuable, which are commodity capabilities, which belong in the MVP, and which should be rejected.
+
+IMPORTANT PRODUCT PRINCIPLE
+Do not treat this as merely a:
+
+Test recorder
+Selenium wrapper
+Playwright wrapper
+Codeless UI builder
+Drag-and-drop tool
+No-code form builder
+The product should potentially become a full test automation platform where the user interacts with business-level concepts while the platform abstracts the technical automation layer.
+
+A possible conceptual model is:
+
+Human Intent ↓ Business Test Model ↓ Visual Test Model ↓ Automation Abstraction ↓ Execution Engine
+
+However, you must challenge this model and propose a better model if one exists.
+
+DEVELOPMENT PROCESS
+You must work through the following phases in order.
+
+Do not skip phases.
+
+Do not jump directly into technical architecture.
+
+Do not start implementation before the product definition and MVP boundaries are sufficiently clear.
+
+Every phase must use the conclusions of the previous phase.
+
+Treat every phase as an input to the next phase.
+
+PHASE 1 — CHALLENGE THE IDEA
+First, critically challenge the original product idea.
+
+Do not agree with me simply because I proposed it.
+
+Analyze:
+
+What exact problem does the product solve?
+Who has this problem?
+How is the problem solved today?
+Why are existing solutions insufficient?
+What are users actually struggling with?
+Why would an enterprise company pay for this?
+Is "zero-code" actually the strongest value proposition?
+Is "full test automation" sufficiently differentiated?
+Which parts of the idea are commodity?
+Which parts could become truly differentiated?
+Which assumptions are weak?
+Which assumptions are dangerous?
+What are the biggest adoption barriers?
+What could make the product fail?
+What could make users reject it?
+What could make enterprise customers reject it?
+What should NOT be built?
+What could competitors easily copy?
+What could become a sustainable competitive advantage?
+What would make this product 10x more valuable than a traditional no-code/codeless testing tool?
+Then identify:
+
+Top 5 opportunities
+Top 5 risks
+Top 5 assumptions that must be validated
+Do not create a roadmap yet.
+
+Do not design the technical architecture yet.
+
+PHASE 2 — REDESIGN THE PRODUCT CONCEPT
+Use the conclusions from Phase 1 to redesign the original idea.
+
+Do not feel obligated to preserve the original concept.
+
+Try to discover a stronger version.
+
+Explore concepts such as:
+
+Business intent driven testing
+Visual test modeling
+Test abstraction
+Application discovery
+Intelligent automation generation
+AI-assisted test creation
+Intelligent test maintenance
+Risk-based testing
+Change impact analysis
+Intelligent regression selection
+Self-healing
+Autonomous maintenance
+Reusable business flows
+Cross-platform automation abstraction
+AI-assisted exploratory testing
+Application knowledge models
+These are ideas to investigate, not assumptions to accept.
+
+Answer:
+
+"What should this product actually be?"
+
+Then provide:
+
+Refined product concept
+One-sentence product definition
+Product category
+Core value proposition
+Key differentiators
+Why users would adopt it
+Why enterprises would purchase it
+What should remain outside the product scope
+Explain clearly how the refined concept differs from the original "Zero-Code Full Test Automation" idea.
+
+PHASE 3 — PRODUCT DEFINITION
+Now create a precise Product Definition.
+
+Produce:
+
+Product Vision
+What is the long-term vision?
+
+Product Mission
+What does the product do today and why?
+
+Target Customers
+Identify specific customer types and enterprise segments.
+
+User Personas
+At minimum consider:
+
+QA Analyst
+Manual Tester
+QA Engineer
+QA Lead
+Business Analyst
+Developer
+Engineering Manager
+QA Manager
+Platform Administrator
+For each persona define:
+
+Goals
+Problems
+Technical skill level
+Responsibilities
+Needs
+Frustrations
+What they need from the platform
+Core Problem
+Clearly define the problem the product solves.
+
+Value Proposition
+Why should users and companies care?
+
+Core User Jobs
+What jobs are users trying to accomplish?
+
+Primary Use Cases
+Identify the highest-value use cases.
+
+Product Principles
+Define the principles that should guide product decisions.
+
+For example:
+
+Zero-code by default
+Technical complexity remains abstracted
+Advanced users retain technical control
+Business intent should remain understandable
+Tests should be maintainable
+Execution should be observable
+Automation should be reusable
+Human control should remain available where necessary
+Challenge these examples and improve them.
+
+Differentiators
+Define the real differentiators.
+
+Competitive Advantages
+Identify potential long-term advantages.
+
+NON-GOALS
+Explicitly define what the product will NOT attempt to solve.
+
+This is mandatory.
+
+PHASE 4 — USER EXPERIENCE AND USER JOURNEY
+Now design the user experience.
+
+Focus on the journey of a non-technical QA analyst.
+
+Describe the complete experience from:
+
+Login ↓ Create / Join Organization ↓ Create Project ↓ Connect Application ↓ Configure Environment ↓ Discover Application ↓ Create Test ↓ Select / Discover Elements ↓ Build Test Flow ↓ Configure Data ↓ Configure Assertions ↓ Execute Test ↓ Review Results ↓ Investigate Failure ↓ Update / Maintain Test ↓ Create Test Suite ↓ Schedule / Trigger Execution ↓ Review Reporting
+
+For every step, explain:
+
+What the user sees
+What the user does
+What the platform does automatically
+What technical complexity is hidden
+What can go wrong
+What feedback is presented to the user
+PHASE 5 — INFORMATION ARCHITECTURE AND UI
+Design the major platform areas.
+
+Consider:
+
+Dashboard
+Organizations
+Projects
+Applications
+Environments
+Test Cases
+Test Suites
+Test Designer
+Element Explorer
+Test Data
+Execution
+Execution History
+Reports
+Defects
+Integrations
+Secrets
+Users
+Roles
+Settings
+Audit Logs
+Do not merely list screens.
+
+For every screen define:
+
+Purpose
+Primary user
+Key actions
+Main information shown
+Important states
+Empty state
+Error state
+Permissions
+Relationships to other screens
+Design the navigation structure.
+
+PHASE 6 — TEST MODEL / DOMAIN MODEL
+Before designing backend architecture, define the conceptual model of the platform.
+
+Determine what the core entities should be.
+
+For example, investigate:
+
+Organization Project Application Environment Test Test Step Action Element Locator Assertion Variable Test Data Test Suite Execution Execution Result Artifact Schedule User Role Permission Integration Defect Run Worker Automation Model
+
+Do not assume this list is correct.
+
+Create a complete domain model.
+
+Describe:
+
+Entities
+Relationships
+Ownership
+Lifecycle
+State transitions
+Reusability
+Versioning
+Auditability
+Most importantly, determine:
+
+What is the canonical representation of a test?
+
+The system should not become tightly coupled to a specific automation framework.
+
+Explore whether the platform should have an intermediate automation model such as:
+
+Business Intent ↓ Test Model ↓ Automation Representation ↓ Execution Adapter
+
+If a better architecture exists, propose it.
+
+PHASE 7 — MVP DEFINITION
+Now reduce the product aggressively.
+
+The goal is not to build everything.
+
+The goal is to determine:
+
+What is the smallest product that proves the core value proposition?
+
+Determine the minimum capabilities required to prove:
+
+"A non-technical person can create and successfully run a meaningful automated test without writing code."
+
+Consider limiting the MVP to:
+
+Web applications
+Playwright
+Chrome
+Single environment
+Basic user authentication
+Basic project management
+Basic test designer
+Element picker
+Basic action system
+Assertions
+Execution
+Execution results
+Basic reporting
+These are suggestions, not requirements.
+
+You must independently determine the correct MVP.
+
+Explicitly define:
+
+MVP IN
+What must be built?
+
+MVP OUT
+What must NOT be built?
+
+Potentially defer:
+
+Kubernetes
+Mobile
+Multiple browsers
+AI-based autonomous exploration
+Advanced self-healing
+Complex distributed execution
+Large-scale enterprise integrations
+Advanced analytics
+unless your analysis proves they are necessary for the core product hypothesis.
+
+Define:
+
+MVP objective
+MVP user
+MVP problem
+MVP workflow
+MVP features
+MVP success criteria
+MVP technical boundaries
+MVP risks
+MVP validation strategy
+PHASE 8 — PRODUCT REQUIREMENTS DOCUMENT
+Now create a complete PRD based on everything discovered so far.
+
+The PRD should include:
+
+Product overview
+Problem statement
+Goals
+Non-goals
+Personas
+User stories
+Use cases
+Functional requirements
+Non-functional requirements
+User journeys
+UX requirements
+Permissions
+Error handling
+Audit requirements
+Observability requirements
+Security requirements
+Scalability requirements
+Acceptance criteria
+Success metrics
+MVP scope
+Future scope
+Prioritize requirements.
+
+Use a clear prioritization model such as:
+
+Must
+Should
+Could
+Won't
+But use your own judgment if a better model exists.
+
+PHASE 9 — ARCHITECTURE STRATEGY
+Only now start designing the technical architecture.
+
+Before selecting microservices, compare:
+
+Option A — Modular Monolith
+Option B — Microservices
+Option C — Hybrid
+Analyze:
+
+Development speed
+Complexity
+Scalability
+Operational overhead
+Deployment
+Team size
+Maintainability
+Cost
+Future migration path
+Recommend one architecture for the MVP and explain why.
+
+Do not create unnecessary microservices.
+
+PHASE 10 — TECHNICAL ARCHITECTURE
+Design the complete technical architecture.
+
+Consider:
+
+Frontend
+Backend
+API
+Authentication
+Authorization
+RBAC
+Multi-tenancy
+Test Model
+Domain Model
+Execution Engine
+Execution Orchestrator
+Scheduler
+Queue
+Workers
+Browser infrastructure
+Artifact storage
+Database
+Cache
+Secrets management
+Reporting
+Notifications
+Audit logs
+Observability
+CI/CD
+Containerization
+Kubernetes
+External integrations
+Explain:
+
+Responsibilities
+Data flow
+Communication patterns
+Failure handling
+Scaling
+Security boundaries
+Deployment topology
+PHASE 11 — AUTOMATION EXECUTION ARCHITECTURE
+Design how a visual/no-code test becomes executable automation.
+
+Example flow:
+
+User-created test ↓ Canonical Test Model ↓ Action Resolution ↓ Element Resolution ↓ Locator Resolution ↓ Execution Plan ↓ Execution Adapter ↓ Playwright / Selenium / Appium / API Engine ↓ Worker ↓ Artifacts ↓ Result ↓ Reporting
+
+Determine whether this model is correct.
+
+Define:
+
+Action abstraction
+Element abstraction
+Locator abstraction
+Assertion abstraction
+Data abstraction
+Execution abstraction
+Framework adapter architecture
+Versioning
+Compatibility
+Explain how the platform could support additional execution engines in the future without changing user-created tests.
+
+PHASE 12 — ENTERPRISE ARCHITECTURE
+Design the enterprise capabilities.
+
+Include:
+
+Multi-tenancy
+Organization hierarchy
+Projects
+RBAC
+SSO
+LDAP / enterprise identity
+Audit logs
+Secrets
+Environment management
+Network isolation
+Private execution
+On-premise deployment
+SaaS deployment
+Hybrid deployment
+Data isolation
+Encryption
+Backup
+Disaster recovery
+Compliance considerations
+Explain what should exist in:
+
+Control Plane
+Execution Plane
+if that architecture is appropriate.
+
+PHASE 13 — AI / INTELLIGENCE STRATEGY
+Do not force AI everywhere.
+
+Identify where AI actually creates significant product value.
+
+Analyze possible applications:
+
+Natural language test creation
+Application understanding
+Element discovery
+Locator generation
+Test generation
+Test optimization
+Risk analysis
+Change impact analysis
+Regression selection
+Failure classification
+Root cause analysis
+Self-healing
+Test maintenance
+Exploratory testing
+Test-data generation
+For every AI capability evaluate:
+
+User value
+Technical feasibility
+Reliability
+Cost
+Risk
+Whether AI is actually necessary
+Clearly separate:
+
+Rule-based automation
+AI-assisted functionality
+Autonomous functionality
+Do not use AI simply because it is fashionable.
+
+PHASE 14 — IMPLEMENTATION ROADMAP
+Now create the engineering roadmap.
+
+Do NOT create a generic "Phase 1 / Phase 2 / Phase 3" roadmap.
+
+Structure work as:
+
+Epic ↓ Feature ↓ User Story ↓ Acceptance Criteria ↓ Technical Task ↓ Dependency ↓ Implementation Order
+
+For every epic define:
+
+Objective
+Why it exists
+Dependencies
+Deliverables
+Risks
+Definition of Done
+Potential areas:
+
+Foundation
+Authentication
+Organizations
+Projects
+Applications
+Environments
+Test Model
+Test Designer
+Element Explorer
+Test Data
+Execution Engine
+Results
+Reporting
+Scheduling
+Integrations
+Administration
+Determine the correct order yourself.
+
+PHASE 15 — ENGINEERING STANDARDS
+Create engineering rules that future implementation must follow.
+
+Define:
+
+Repository structure
+Module boundaries
+Naming conventions
+Coding standards
+API conventions
+Error handling
+Logging
+Observability
+Database conventions
+Migration strategy
+Testing strategy
+Unit testing
+Integration testing
+End-to-end testing
+Security testing
+CI/CD conventions
+Branching strategy
+Pull request standards
+Code review standards
+Documentation standards
+Architecture rules
+Dependency management
+Versioning
+The goal is to prevent future AI-assisted development from producing inconsistent architecture.
+
+PHASE 16 — VALIDATION STRATEGY
+Before implementation becomes large, define how the product hypothesis will be validated.
+
+Answer:
+
+What is the core hypothesis?
+What must be true for this product to succeed?
+What is the fastest way to test it?
+What should be built as a prototype?
+What should be tested with real users?
+What metrics determine success?
+What would disprove the idea?
+Define measurable MVP success metrics.
+
+Examples may include:
+
+Time to create first automated test
+Percentage of users completing first test without technical assistance
+Test creation time
+Test execution success rate
+Test maintenance effort
+User adoption
+Test reuse
+Automation coverage
+Do not assume these metrics are correct. Improve them.
+
+PHASE 17 — RISKS AND DECISION LOG
+Create a decision log.
+
+For each major decision record:
+
+Decision
+Alternatives
+Reasoning
+Trade-offs
+Consequences
+Also maintain:
+
+Product risks
+Technical risks
+UX risks
+Security risks
+Scalability risks
+Business risks
+Identify which risks should be tested first.
+
+PHASE 18 — FINAL PRODUCT BLUEPRINT
+At the end, consolidate everything into a coherent product blueprint.
+
+The final output should include:
+
+Final product definition
+Product vision
+Product mission
+Target users
+Core problem
+Value proposition
+Differentiators
+Product principles
+Non-goals
+User journeys
+UX structure
+Domain model
+Test model
+MVP scope
+PRD summary
+Architecture strategy
+Recommended architecture
+Execution architecture
+Enterprise architecture
+AI strategy
+Engineering roadmap
+Engineering standards
+Validation strategy
+Risks
+Decision log
+Long-term evolution path
+CRITICAL RULES
+Follow these rules throughout the entire analysis:
+
+Rule 1
+Do not blindly agree with my original idea.
+
+Rule 2
+Challenge assumptions before building on them.
+
+Rule 3
+Do not jump to architecture before product definition.
+
+Rule 4
+Do not optimize for technical complexity.
+
+Rule 5
+Prefer the simplest architecture that can prove the product hypothesis.
+
+Rule 6
+Do not introduce microservices unless there is a concrete reason.
+
+Rule 7
+Do not introduce AI unless it creates meaningful value.
+
+Rule 8
+Do not treat self-healing as automatically necessary for the MVP.
+
+Rule 9
+Always distinguish:
+
+Must have
+Useful
+Future
+Unnecessary
+Rule 10
+Always identify what should NOT be built.
+
+Rule 11
+Think like an enterprise product company, not a side project.
+
+Rule 12
+The product must remain usable by non-technical users while still providing deep control to technical users.
+
+Rule 13
+Prefer a canonical test model that is independent from a particular automation framework.
+
+Rule 14
+The final architecture must support future scaling, but MVP architecture must remain simple enough to build and operate.
+
+Rule 15
+Every major feature must answer:
+
+What user problem does this solve?
+
+Rule 16
+Every architectural component must answer:
+
+Why does this component need to exist?
+
+Rule 17
+Every AI capability must answer:
+
+Why is AI better than deterministic logic here?
+
+Rule 18
+Always consider the economics of the product:
+
+Infrastructure cost
+Execution cost
+AI cost
+Enterprise deployment cost
+Operational cost
+Rule 19
+Do not write production code during these phases.
+
+The objective is to produce a complete and coherent product/technical blueprint first.
+
+Rule 20
+When a better idea emerges during the process, revise previous assumptions instead of protecting the original concept.
+
+OUTPUT FORMAT
+Organize the response as a professional product-development document.
+
+For every major phase provide:
+
+Findings
+Decisions
+Rationale
+Risks
+Open Questions
+Deliverable
+When something is uncertain, explicitly label it as:
+
+ASSUMPTION
+
+When something requires validation, label it as:
+
+VALIDATION REQUIRED
+
+When you reject an idea, explain:
+
+WHY REJECTED
+
+When you recommend something, explain:
+
+WHY RECOMMENDED
+
+Do not hide trade-offs.
+
+At the end provide:
+
+Executive Summary
+Final Product Definition
+MVP Definition
+Recommended Architecture
+Engineering Roadmap
+Top Risks
+Critical Validation Experiments
+Open Questions
+Next Immediate Actions
+The final result should be detailed enough that a product manager, UX designer, solution architect, and engineering team could use it as the foundation for actually building the product.
