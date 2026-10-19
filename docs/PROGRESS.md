@@ -92,6 +92,14 @@ başarısız olur. Kanıt dosyaları `test-results/` altında ignore edilir.
 
 ## Sonraki artımın önerilen sırası
 
+Ürün tarafındaki en yakın eksik **element kütüphanesine bağlı genel test ve iş
+akışı tasarımcısıdır**. Mevcut editör hâlâ giriş akışı + dashboard/bakiye şablonuyla
+sınırlıdır. Kullanıcı element ve aksiyon seçebilmeli; tıkla, doldur, doğrula
+adımlarını sıralayıp taslak kaydedebilmeli, yayınlanan sürümü tekrar açabilmelidir.
+Ardından genel uygulama/sayfa kataloğu, mapping değişikliğini testlere açık onayla
+uygulama, suite ve çoklu test çalıştırma gelir. Aşağıdaki auth/PostgreSQL/güvenli
+hedef işleri gerçek staging/pilot kullanımından önce tamamlanmalıdır.
+
 1. **Gerçek tenant/auth temeli:** kanıtlanmış session/auth çözümü, gerçek user ve
    membership; org/project provisioning; RBAC matrisi ve çok üyeli negatif test.
    Yerel demo login'i üretim rotası olarak açma.
@@ -113,6 +121,11 @@ AI, otonom healing, mobil/API engine, Kubernetes ve browser farm kapsam dışıd
 Ürün avantajı, müşteri araştırması ve ticari validasyon kanıtlanmış sayılmaz.
 
 ## Çalışma kuralları
+
+Kullanıcı 19 Ekim 2026'da her tamamlanan işin mutlaka commit ve push ile
+kapatılmasını sürekli talimat olarak verdi. İlgili doğrulamaları yap, origin/main
+dalına gönder, uzak commit'i kontrol et ve sonucu bildir; tekrar push onayı sorma.
+Bu tercih AGENTS.md içinde de kayıtlıdır.
 
 Mevcut `/workspace/ZCFA-ZeroCodeFullAutomation` checkout'unu kullan. Task zaten
 izole; kullanıcı istemedikçe worktree açma. Gerçek secret'ları chat/log/dosyalara
