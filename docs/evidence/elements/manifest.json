@@ -1,0 +1,42 @@
+{
+  "verification": {
+    "domainAndApiTests": 21,
+    "e2eChecks": 12,
+    "skipped": 0,
+    "typecheck": "passed",
+    "build": "passed",
+    "locatorTypesVerified": 10
+  },
+  "files": [
+    {
+      "path": "07-elements-registry.png",
+      "bytes": 193467,
+      "sha256": "794e56fd34acd95b7b1d09313d1370734508bffdbe25b0b9ea58dc0af21b03d6"
+    },
+    {
+      "path": "08-elements-verified.png",
+      "bytes": 209829,
+      "sha256": "eaeccdd3c14c48db575493c729694e5c4a712174e33ceb44fee78133430dd962"
+    },
+    {
+      "path": "09-elements-create.png",
+      "bytes": 174193,
+      "sha256": "decc491882eb685795b28684cb936747932c5aa9f3a687cc7a36c5cf6303790b"
+    },
+    {
+      "path": "10-elements-history.png",
+      "bytes": 198671,
+      "sha256": "2b332e2c50b160dbbf77faea039428bdaa1dededdb9571348e6820a39010c4e6"
+    },
+    {
+      "path": "11-elements-mobile.png",
+      "bytes": 149190,
+      "sha256": "3d73d9e719ec6aae69aa9997590b5a559b7abfd75d8759bbc5d70ba1d3c69fb1"
+    },
+    {
+      "path": "services.log",
+      "bytes": 3998,
+      "sha256": "63c04879de37001acf80029d5982cf28ef8d9fd49e3fcc14a37f3a6b9436fb5b"
+    }
+  ]
+}

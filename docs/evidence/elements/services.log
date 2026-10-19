@@ -1,0 +1,36 @@
+   ▲ Next.js 15.5.28
+   - Local:        http://127.0.0.1:3000
+   - Network:      http://127.0.0.1:3000
+
+ ✓ Starting...
+demo-fixture ready
+{"service":"api","event":"ready","mode":"local-prototype"}
+{"service":"worker","event":"ready","concurrency":1}
+ ✓ Ready in 762ms
+{"service":"worker","event":"job.completed","jobId":"c5d4d4e7-003b-49c7-938b-bbe764d08b3c","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"fdc9758b-d347-471c-b66f-293cd207b64d","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"c04230f7-e81d-4d4f-b87e-2c412f816eb8","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"5f5be735-8bc9-475f-990f-af8716ad784b","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"78fec713-20b3-47a0-badc-d62ce6964143","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"04d33b85-0237-4151-aa22-2e17afc18b89","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"f04256e7-94ab-43bf-ac65-bd3c349177d7","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"844e7a8a-ae89-4933-8e6d-6ce55e826e80","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"83f77f56-7227-4dd6-b7c2-d97e053cfa41","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"801eb719-0bcd-4ac2-a6a6-d6417a4f363d","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"f25030ba-3fbe-4ca5-a6e6-7b271fcb7756","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"90353582-5191-4e6f-9a34-0418fc567fce","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"e144ab38-6442-4a40-83bb-286803f84b13","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"7d3e4d8e-6db7-4bad-86a9-2434315c2ced","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"0867300e-0321-46c5-a553-ec2cf7568c32","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"84d253d5-f906-4601-9630-07c72d47cec3","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"d2516d08-1af5-46e0-8b3b-8eaec8c2a043","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"17758002-cbfb-42ce-90c6-0e10defe4c22","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"93a0844b-608c-42a0-86fa-f7f480eac228","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"113471f0-b0ef-4bcf-8e07-d088c9fbe5e6","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"6b31eb6e-8ef3-4f36-bcbe-c05ce3594839","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"23155cca-b869-4870-b747-7f08840a27aa","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"a112f5b7-96bf-4949-9386-37a66db90e68","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"e8e8c553-4067-418d-8126-2467c5e8f978","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.error","jobId":"0c918b00-ca3d-4524-ac89-384229bcaedc","code":"WORKER_ERROR"}
+{"service":"worker","event":"job.completed","jobId":"6705dc2a-18e3-4633-b082-cf0a67c055aa","orgId":"10000000-0000-4000-8000-000000000001"}
+{"service":"worker","event":"job.completed","jobId":"4494d2c4-f89f-4b1e-aefc-f9c2bc55ab25","orgId":"10000000-0000-4000-8000-000000000001"}

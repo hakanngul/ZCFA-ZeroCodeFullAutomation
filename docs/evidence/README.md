@@ -1,5 +1,9 @@
 # İlk prototipin ekranları ve çalıştırma verileri
 
+Güncel **Elementler** sayfasının masaüstü/mobil ekranları ve doğrulama kaydı
+[elements/](elements/README.md) klasöründedir. Aşağıdaki veritabanları ilk prototipin
+arşividir; yeni ekranın çalışması bunları değiştirmez.
+
 Kullanıcının isteğiyle kaynak koda ek olarak üretilen proje çıktıları da depoya
 alındı. Bu klasörün dışında kalan `.local/` ve `test-results/` çalışma dizinleri
 ignore edilmeye devam eder; yeni test koşuları bu arşivi kendiliğinden değiştirmez.

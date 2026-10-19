@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { locatorSchema, type LocatorSpec } from "./locators";
+export { locatorSchema, type LocatorSpec } from "./locators";
 
 export class DomainError extends Error {
   constructor(
@@ -21,27 +23,26 @@ export type Actor = {
   role: "admin" | "editor" | "viewer";
 };
 
-export const locatorSchema = z.discriminatedUnion("kind", [
-  z
-    .object({ kind: z.literal("label"), value: z.string().min(1).max(120) })
-    .strict(),
-  z
-    .object({ kind: z.literal("testId"), value: z.string().min(1).max(120) })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("role"),
-      role: z.enum(["button", "heading", "textbox"]),
-      value: z.string().min(1).max(120),
-    })
-    .strict(),
-]);
-export type LocatorSpec = z.infer<typeof locatorSchema>;
 export const elementSchema = z
   .object({
-    id: z.string().min(1),
-    label: z.string().min(1),
+    id: z
+      .string()
+      .min(1)
+      .max(120)
+      .regex(/^[A-Za-z][A-Za-z0-9_.-]*$/),
+    label: z.string().trim().min(1).max(120),
     locator: locatorSchema,
+    alternatives: z.array(locatorSchema).max(5).optional(),
+    dom: z
+      .object({
+        id: z.string().max(200).optional(),
+        name: z.string().max(200).optional(),
+        testId: z.string().max(200).optional(),
+        role: z.string().max(100).optional(),
+        accessibleName: z.string().max(200).optional(),
+      })
+      .strict()
+      .optional(),
     approved: z.boolean(),
     page: z.enum(["login", "dashboard"]),
   })

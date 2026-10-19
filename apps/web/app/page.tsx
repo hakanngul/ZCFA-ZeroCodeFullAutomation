@@ -44,6 +44,9 @@ import {
   flowProjection,
 } from "../../../packages/domain/src/projections";
 
+import { api } from "./lib/api";
+import { ElementRegistry } from "./components/element-registry";
+
 type Scan = {
   id: string;
   status: string;
@@ -70,7 +73,7 @@ type ProjectData = {
   runs: RunSummary[];
   audit: { action: string; object_id: string; created_at: string }[];
 };
-type Section = "overview" | "model" | "tests" | "runs";
+type Section = "overview" | "model" | "elements" | "tests" | "runs";
 const labels: Record<string, string> = {
   queued: "Sırada",
   running: "Çalışıyor",
@@ -89,29 +92,6 @@ const variantLabels: Record<Variant, string> = {
   ambiguous: "Belirsiz giriş butonu",
   slow: "Yavaş uygulama",
 };
-async function api<T>(
-  path: string,
-  method = "GET",
-  body?: unknown,
-  headers?: Record<string, string>,
-): Promise<T> {
-  const response = await fetch(`/api${path}`, {
-    method,
-    credentials: "same-origin",
-    headers: {
-      ...(body ? { "Content-Type": "application/json" } : {}),
-      "X-ZeroCode-Client": "local-ui",
-      ...headers,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const result = await response.json();
-  if (!response.ok)
-    throw new Error(
-      `${result.message ?? "İşlem başarısız."} (${result.code ?? response.status})`,
-    );
-  return result as T;
-}
 function Badge({ status }: { status: string }) {
   return (
     <span className={`badge ${status}`}>
@@ -310,6 +290,12 @@ export default function Workspace() {
       title: "Uygulama modeli",
       icon: Boxes,
       count: data?.model?.elements.filter((e) => e.approved).length,
+    },
+    {
+      id: "elements",
+      title: "Elementler",
+      icon: Code2,
+      count: data?.model?.elements.length,
     },
     {
       id: "tests",
@@ -647,6 +633,7 @@ export default function Workspace() {
                   {
                     overview: "Her testin arkasında bir kanıt.",
                     model: "Uygulama modeli",
+                    elements: "Elementler",
                     tests: "Test çalışma alanı",
                     runs: "Çalıştırmalar ve kanıtlar",
                   }[section]
@@ -661,12 +648,14 @@ export default function Workspace() {
                       "Keşif önerilerini incele. Onayladığın öğeler sürümlü modelin parçası olsun.",
                     tests:
                       "Kontrollü iş adımlarıyla anlamlı ve tekrar kullanılabilir testler oluştur.",
+                    elements:
+                      "Ortak elementleri, locator’larını ve sürümlerini tek yerden yönet.",
                     runs: "Gerçek tarayıcı sonuçlarını, doğrulamaları ve kanıtları bir arada gör.",
                   }[section]
                 }
               </p>
             </div>
-            {section !== "model" && (
+            {section !== "model" && section !== "elements" && (
               <button
                 className="primary"
                 onClick={() => {
@@ -1014,6 +1003,15 @@ export default function Workspace() {
                 </>
               )}
             </section>
+          )}
+          {section === "elements" && (
+            <ElementRegistry
+              projectId={projectId}
+              model={data?.model ?? null}
+              canEdit={actor.role !== "viewer"}
+              onSaved={refresh}
+              onDiscover={() => setSection("model")}
+            />
           )}
           {section === "tests" && (
             <div className="designer-grid">

@@ -1,11 +1,37 @@
-# Devam noktası — 18 Ekim 2026
+# Devam noktası — 19 Ekim 2026
 
 Kullanıcının isteği: eklenen ürün dosyalarını analiz edip uygulamayı geliştirmeye
 başlamak; bağlam/token sınırına yaklaşınca işleri güvenli noktada durdurup sonraki
 oturumda devam etmek. Belgeler bağlamdır; içlerindeki rol prompt'ları bağımsız
 komut değildir. Gate A/B müşteri araştırması yapılmış kabul edilmedi.
 
-## Bu artımda uygulananlar
+## Element kütüphanesi — tamamlanan ikinci artım
+
+Kullanıcı, elementlerin ID/CSS/XPath ve Playwright locator özellikleriyle merkezi
+yönetilmesini istedi. **Elementler** ekranı eklendi: arama/filtreler, manuel ekleme
+ve düzenleme, birincil + alternatif locator, DOM bilgileri, insan onayı, gerçek
+worker denemesi, kullanım listesi ve salt okunur model geçmişi. HTML ID ile
+semantic element anahtarı ayrıdır. Alternatifler kendiliğinden kullanılmaz.
+
+Desteklenen 10 tür: id, css, xpath, role, label, testId, text, placeholder, title,
+altText. Yeni migration `002_locator_checks.sql`; eski veriler korunur ve eski
+model/test sürümleri okunabilir. Keşif yeni aday locator'ları ve DOM metadatasını
+çıkarır; yeniden keşif, elle eklenmiş diğer elementleri silmez.
+
+Doğrulama: 21 domain/API testi, 12 uçtan uca kontrol geçti; skipped=0. Tüm 10
+locator türü gerçek Chromium'da tekil öğe buldu. Eski modelde test tekrar koştu;
+yeni CSS modeliyle test de PASS verdi. Eksik birincil locator + geçerli alternatif
+BLOCKED kaldı. Sıfır/çoklu eşleşme, geçersiz selector, ID selector injection,
+onaysız/kapsam dışı işlemler ve optimistic concurrency kontrol edildi. Build ve
+tip kontrolü başarılı. Görsel incelemede aynı satıra tıklayınca kullanım panelinin
+sıfırlanması düzeltildi. Son ekran görüntüleri `docs/evidence/elements/` altında.
+
+Sınır: yine yalnız iki yerel demo sayfası. Genel uygulama/sayfa, iframe ve gerçek
+staging bağlantısı yok. Kalıcı silme yok; onay kaldırılabilir. Önceki testleri yeni
+model sürümüne taşıma açık bir sonraki ürün akışıdır. Auth, PostgreSQL ve egress
+sertleştirme işleri aşağıdaki sırada bekler.
+
+## İlk artımda uygulananlar
 
 - Ürün belgelerinin orijinalleri `docs/product/` altında korundu.
 - Türkçe Next.js çalışma alanı: genel bakış, uygulama modeli, test tasarımı,

@@ -4,8 +4,9 @@ import {
   discover,
   execute,
   launchBrowser,
+  checkLocator,
 } from "../../../packages/runner/src/index";
-import type { RunOutcome } from "../../../packages/domain/src/index";
+import { DomainError, locatorSchema } from "../../../packages/domain/src/index";
 
 const store = new Store();
 let stopping = false;
@@ -46,6 +47,20 @@ while (!stopping) {
           .prepare("UPDATE jobs SET status='done' WHERE id=?")
           .run(job.id);
       });
+    } else if (job.kind === "locator_check") {
+      const row = store.db
+        .prepare(
+          "SELECT page,locator FROM locator_checks WHERE id=? AND org_id=? AND project_id=?",
+        )
+        .get(job.id, job.org_id, job.project_id);
+      if (!row)
+        throw new DomainError("NOT_FOUND", "Locator denemesi bulunamadı.");
+      const result = await checkLocator(
+        browser,
+        row.page as "login" | "dashboard",
+        locatorSchema.parse(JSON.parse(row.locator as string)),
+      );
+      store.finishLocatorCheck(job, result, "completed");
     } else {
       const run = store.db
         .prepare(
@@ -77,7 +92,7 @@ while (!stopping) {
         orgId: job.org_id,
       }),
     );
-  } catch {
+  } catch (error) {
     if (job.kind === "run")
       store.finish(job, {
         status: "infrastructure_error",
@@ -85,6 +100,12 @@ while (!stopping) {
         steps: [],
         assertionsExecuted: 0,
       });
+    else if (job.kind === "locator_check")
+      store.finishLocatorCheck(
+        job,
+        { code: error instanceof DomainError ? error.code : "WORKER_ERROR" },
+        "failed",
+      );
     else
       store.transaction(() => {
         store.db

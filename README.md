@@ -53,6 +53,31 @@ geçici veritabanı kullanır; geliştiricinin `.local` verilerini silmez. Gerç
 tarayıcı ekran görüntüleri ve servis günlükleri `test-results/` altında üretilir.
 Klasör ignore edilir. Sıfır test veya yalnız açık port başarı kanıtı sayılmaz.
 
+## Element kütüphanesi
+
+Sol menüdeki **Elementler** ekranı; arama, sayfa/onay filtresi, elle ekleme ve
+düzenleme destekler. Her elementin sabit iş anahtarı, adı, sayfası, birincil
+locator'ı ve en fazla beş alternatifi vardır. Keşifte gözlenen DOM özellikleri
+ayrıca salt okunur gösterilir.
+
+Desteklenen türler: HTML ID, CSS, XPath, Role, Label, Test ID, Text, Placeholder,
+Title ve Alt text. Playwright önizlemesi gösterilir; kayıtlar typed veridir,
+kullanıcının JavaScript kodu çalıştırılmaz.
+
+**Locator'ı dene**, ayrı worker'da demo sayfasını pasif açıp eşleşme sayısını ve
+görünürlüğü döndürür. Sıfır, tekil ve çoklu eşleşmeler ayrılır; bu deneme test
+assertion'ı veya PASS üretmez. Dashboard öğeleri demo öğretim rotasında denenir.
+
+Locator/sayfa değişimi arayüzde onayı kaldırır. Her kayıt yeni model revision'ı
+oluşturur; eşzamanlı düzenleme çatışması 409 ile engellenir. Geçmiş salt okunur
+incelenir, mevcut testler eski modelde kalır. Kullanıldığı flow ve test sürümleri
+ayrıntı panelinde gösterilir. Alternatifler otomatik denenmez; birincil yapmak
+açık seçim gerektirir.
+
+Bu artım Giriş ve Dashboard sayfalarıyla sınırlıdır. Harici hedef, iframe, özel
+Shadow DOM kapsamı, genel sayfa kataloğu, kalıcı silme ve otomatik test sürümü
+taşıma henüz yoktur. Element onayını kaldırma desteklenir.
+
 ## Mimari
 
 - `apps/web`: Next.js Türkçe çalışma alanı; business / flow / technical projeksiyonları.

@@ -12,6 +12,8 @@ import {
   demoProject,
   demoUser,
   DomainError,
+  elementSchema,
+  locatorSchema,
   testSchema,
   variants,
   type Actor,
@@ -245,12 +247,18 @@ export async function createApp(store = new Store()) {
           "Giriş öğeleri ve Dashboard onaylanmalı.",
         );
       const revision = (store.model(user, projectId)?.revision ?? 0) + 1;
+      const retainedElements =
+        store
+          .model(user, projectId)
+          ?.elements.filter(
+            (e) => !elements.some((candidate) => candidate.id === e.id),
+          ) ?? [];
       const model: AppModel = {
         orgId: user.orgId,
         projectId,
         applicationId: demoApplication,
         revision,
-        elements,
+        elements: [...elements, ...retainedElements],
         flow: {
           id: "login",
           revision,
@@ -303,6 +311,164 @@ export async function createApp(store = new Store()) {
       throw error;
     }
     return reply.code(201).send({ test, plan });
+  });
+  app.get("/v1/projects/:projectId/elements", async (request) => {
+    const user = actor(request),
+      { projectId } = projectParams.parse(request.params);
+    const revision = z
+      .object({ revision: z.coerce.number().int().positive().optional() })
+      .parse(request.query).revision;
+    const model = store.model(user, projectId, revision);
+    if (revision && !model)
+      throw new DomainError("NOT_FOUND", "Model sürümü bulunamadı.", 404);
+    return { revision: model?.revision ?? 0, elements: model?.elements ?? [] };
+  });
+  const elementChange = z
+    .object({
+      expectedRevision: z.number().int().min(0),
+      element: elementSchema,
+    })
+    .strict();
+  app.post("/v1/projects/:projectId/elements", async (request, reply) => {
+    const user = actor(request, true),
+      { projectId } = projectParams.parse(request.params);
+    const { expectedRevision, element } = elementChange.parse(request.body);
+    return reply
+      .code(201)
+      .send(store.saveElement(user, projectId, element, expectedRevision));
+  });
+  app.put("/v1/projects/:projectId/elements/:elementId", async (request) => {
+    const user = actor(request, true),
+      { projectId, elementId } = z
+        .object({ projectId: z.uuid(), elementId: z.string().min(1).max(120) })
+        .parse(request.params);
+    const { expectedRevision, element } = elementChange.parse(request.body);
+    return store.saveElement(
+      user,
+      projectId,
+      element,
+      expectedRevision,
+      elementId,
+    );
+  });
+  app.get("/v1/projects/:projectId/elements/history", async (request) => {
+    const user = actor(request),
+      { projectId } = projectParams.parse(request.params);
+    store.project(user, projectId);
+    const revisions = store.db
+      .prepare(
+        "SELECT revision,definition FROM models WHERE org_id=? AND project_id=? ORDER BY revision DESC LIMIT 100",
+      )
+      .all(user.orgId, projectId);
+    return {
+      revisions: revisions.map((row) => ({
+        revision: row.revision,
+        elements: JSON.parse(row.definition as string).elements.length,
+      })),
+    };
+  });
+  app.get(
+    "/v1/projects/:projectId/elements/:elementId/usage",
+    async (request) => {
+      const user = actor(request),
+        { projectId, elementId } = z
+          .object({
+            projectId: z.uuid(),
+            elementId: z.string().min(1).max(120),
+          })
+          .parse(request.params);
+      const model = store.model(user, projectId);
+      if (!model?.elements.some((e) => e.id === elementId))
+        throw new DomainError("NOT_FOUND", "Element bulunamadı.", 404);
+      const rows = store.db
+        .prepare(
+          "SELECT definition FROM tests WHERE org_id=? AND project_id=? ORDER BY created_at DESC",
+        )
+        .all(user.orgId, projectId);
+      const tests = rows.flatMap((row) => {
+        const test = testSchema.parse(JSON.parse(row.definition as string));
+        const pinned = store.model(user, projectId, test.appModelRef.revision);
+        const used = test.steps.some((step) =>
+          step.kind === "assert"
+            ? step.elementRef === elementId
+            : !!pinned?.flow.targets.includes(elementId),
+        );
+        return used
+          ? [
+              {
+                testId: test.testId,
+                title: test.title,
+                revision: test.revision,
+                modelRevision: test.appModelRef.revision,
+              },
+            ]
+          : [];
+      });
+      return { tests, flow: model.flow.targets.includes(elementId) };
+    },
+  );
+  app.post("/v1/projects/:projectId/locator-checks", async (request, reply) => {
+    const user = actor(request, true),
+      { projectId } = projectParams.parse(request.params);
+    store.project(user, projectId);
+    const body = z
+      .object({ page: z.enum(["login", "dashboard"]), locator: locatorSchema })
+      .strict()
+      .parse(request.body);
+    const id = randomUUID(),
+      now = new Date().toISOString();
+    store.transaction(() => {
+      const pending = store.db
+        .prepare(
+          "SELECT count(*) AS n FROM jobs WHERE org_id=? AND status IN ('queued','running')",
+        )
+        .get(user.orgId)!.n as number;
+      if (pending >= 20)
+        throw new DomainError("QUEUE_FULL", "Yerel kuyruk dolu.", 429);
+      const revision = store.model(user, projectId)?.revision ?? 0;
+      store.db
+        .prepare("INSERT INTO locator_checks VALUES (?,?,?,?,?,?,?,?,?)")
+        .run(
+          id,
+          user.orgId,
+          projectId,
+          revision,
+          body.page,
+          JSON.stringify(body.locator),
+          "queued",
+          null,
+          now,
+        );
+      store.db
+        .prepare(
+          "INSERT INTO jobs (id,org_id,project_id,kind,payload,status,created_at) VALUES (?,?,?,?,?,?,?)",
+        )
+        .run(id, user.orgId, projectId, "locator_check", "{}", "queued", now);
+      store.audit(user, projectId, "locator.checked", id);
+    });
+    return reply.code(202).send({ id, status: "queued" });
+  });
+  app.get("/v1/projects/:projectId/locator-checks/:id", async (request) => {
+    const user = actor(request),
+      { projectId, id } = z
+        .object({ projectId: z.uuid(), id: z.uuid() })
+        .parse(request.params);
+    store.project(user, projectId);
+    const row = store.db
+      .prepare(
+        "SELECT * FROM locator_checks WHERE id=? AND org_id=? AND project_id=?",
+      )
+      .get(id, user.orgId, projectId);
+    if (!row)
+      throw new DomainError("NOT_FOUND", "Locator denemesi bulunamadı.", 404);
+    return {
+      id: row.id,
+      status: row.status,
+      page: row.page,
+      modelRevision: row.model_revision,
+      locator: JSON.parse(row.locator as string),
+      result: row.result ? JSON.parse(row.result as string) : null,
+    };
   });
   app.post("/v1/tests/:id/runs", async (request, reply) => {
     const user = actor(request, true),

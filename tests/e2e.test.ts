@@ -11,6 +11,10 @@ import {
   type CanonicalTest,
   type RunOutcome,
 } from "../packages/domain/src/index";
+import type {
+  LocatorSpec,
+  LocatorCheck,
+} from "../packages/domain/src/locators";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function waitFor<T>(
@@ -119,6 +123,7 @@ test(
       await page
         .getByRole("heading", { name: "Her testin arkasında bir kanıt." })
         .waitFor();
+      await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({
         path: join(evidenceDir, "01-overview.png"),
         fullPage: true,
@@ -134,6 +139,7 @@ test(
       );
       for (const checkbox of await page.locator(".mapping-row input").all())
         await checkbox.check();
+      await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({
         path: join(evidenceDir, "02-discovery.png"),
         fullPage: true,
@@ -154,6 +160,7 @@ test(
       await page.getByRole("tab", { name: "İş adımları", exact: true }).click();
       await page.getByRole("button", { name: "Doğrula ve yayınla" }).click();
       await page.getByRole("button", { name: "Testi çalıştır" }).waitFor();
+      await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({
         path: join(evidenceDir, "03-designer.png"),
         fullPage: true,
@@ -163,6 +170,7 @@ test(
         .locator(".result-card .badge.passed")
         .waitFor({ timeout: 20000 });
       assert.match(await page.locator(".run-meta").innerText(), /2 assertion/);
+      await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({
         path: join(evidenceDir, "04-real-pass.png"),
         fullPage: true,
@@ -249,6 +257,7 @@ test(
             })
             .click();
           await page.locator(".result-card .badge.failed").waitFor();
+          await page.evaluate(() => window.scrollTo(0, 0));
           await page.screenshot({
             path: join(evidenceDir, "05-real-fail.png"),
             fullPage: true,
@@ -348,6 +357,296 @@ test(
         },
       );
       await t.test(
+        "element registry edits, live verification, manual creation and immutable history",
+        async () => {
+          await page
+            .locator("nav")
+            .getByRole("button", { name: /Elementler/ })
+            .click();
+          await page
+            .getByRole("heading", { name: "Elementler", exact: true, level: 1 })
+            .waitFor();
+          await page
+            .getByRole("button", {
+              name: "Giriş yap öğesini düzenle",
+              exact: true,
+            })
+            .click();
+          assert.equal(
+            await page
+              .getByLabel("Element anahtarı", { exact: true })
+              .inputValue(),
+            "login.submit",
+          );
+          assert.equal(
+            await page
+              .getByLabel("Birincil locator türü", { exact: true })
+              .inputValue(),
+            "testId",
+          );
+          await page.evaluate(() => window.scrollTo(0, 0));
+          await page.locator(".element-usage").waitFor();
+          await page.screenshot({
+            path: join(evidenceDir, "07-elements-registry.png"),
+            fullPage: true,
+          });
+          const css = page.locator(".locator-alternative").filter({
+            has: page.locator("summary strong", { hasText: /^CSS$/ }),
+          });
+          await css.locator("summary").click();
+          await css.getByRole("button", { name: "Birincil yap" }).click();
+          assert.equal(
+            await page
+              .getByLabel("Birincil locator türü", { exact: true })
+              .inputValue(),
+            "css",
+          );
+          assert.equal(
+            await page
+              .getByLabel("Bu eşlemeyi onaylıyorum", { exact: false })
+              .isChecked(),
+            false,
+          );
+          await page
+            .getByRole("button", { name: "Locator’ı dene", exact: false })
+            .click();
+          await page
+            .locator(".locator-result.unique")
+            .waitFor({ timeout: 15000 });
+          await page
+            .getByLabel("Bu eşlemeyi onaylıyorum", { exact: false })
+            .check();
+          await page.evaluate(() => window.scrollTo(0, 0));
+          await page.screenshot({
+            path: join(evidenceDir, "08-elements-verified.png"),
+            fullPage: true,
+          });
+          await page
+            .getByRole("button", { name: "Kaydet", exact: true })
+            .click();
+          await waitFor(
+            async () =>
+              (await request(`/v1/projects/${demoProject}/elements`))
+                .revision === 2,
+          );
+          const unchanged = await request(`/v1/runs/${project.runs[0].id}`);
+          assert.equal(unchanged.plan.modelRevision, 1);
+          const pinned = await request(
+            `/v1/tests/${published.testId}/runs`,
+            "POST",
+            { variant: "healthy" },
+            { "idempotency-key": randomUUID() },
+          );
+          assert.equal((await waitRun(pinned.id)).status, "passed");
+          const current = await request(`/v1/projects/${demoProject}`);
+          const newTest: CanonicalTest = {
+            ...structuredClone(published),
+            testId: randomUUID(),
+            title: "[E2E] Yeni CSS eşlemesi",
+            appModelRef: { ...published.appModelRef, revision: 2 },
+          };
+          const compiled = await request(
+            `/v1/projects/${demoProject}/tests`,
+            "POST",
+            newTest,
+          );
+          assert.equal(compiled.plan.steps[3].target.kind, "css");
+          const updatedRun = await request(
+            `/v1/tests/${newTest.testId}/runs`,
+            "POST",
+            { variant: "healthy" },
+            { "idempotency-key": randomUUID() },
+          );
+          assert.equal((await waitRun(updatedRun.id)).status, "passed");
+          await page
+            .getByRole("button", { name: "Element ekle", exact: true })
+            .click();
+          await page
+            .getByLabel("Element adı", { exact: true })
+            .fill("Giriş hata mesajı");
+          await page
+            .getByLabel("Element anahtarı", { exact: true })
+            .fill("login.error");
+          await page
+            .getByLabel("Birincil locator türü", { exact: true })
+            .selectOption("id");
+          await page
+            .getByLabel("Birincil locator değeri", { exact: true })
+            .fill("error");
+          await page
+            .getByRole("button", { name: "Locator’ı dene", exact: false })
+            .click();
+          await page
+            .locator(".locator-result.unique")
+            .waitFor({ timeout: 15000 });
+          await page.evaluate(() => window.scrollTo(0, 0));
+          await page.screenshot({
+            path: join(evidenceDir, "09-elements-create.png"),
+            fullPage: true,
+          });
+          await page
+            .getByRole("button", { name: "Kaydet", exact: true })
+            .click();
+          await waitFor(
+            async () =>
+              (await request(`/v1/projects/${demoProject}/elements`))
+                .revision === 3,
+          );
+          await page
+            .getByLabel("Element ara", { exact: true })
+            .fill("login.error");
+          await waitFor(
+            async () =>
+              (await page.locator(".element-table tbody tr").count()) === 1,
+          );
+          await page.getByLabel("Element ara", { exact: true }).fill("");
+          await page
+            .getByLabel("Model sürümü", { exact: true })
+            .selectOption("1");
+          await page.locator(".element-history-banner").waitFor();
+          assert.equal(
+            await page.locator(".element-table tbody tr").count(),
+            5,
+          );
+          assert.equal(
+            await page.getByLabel("Element adı", { exact: true }).isDisabled(),
+            true,
+          );
+          assert.equal(
+            await page
+              .getByRole("button", { name: "Element ekle", exact: true })
+              .isDisabled(),
+            true,
+          );
+          await page.evaluate(() => window.scrollTo(0, 0));
+          await page.screenshot({
+            path: join(evidenceDir, "10-elements-history.png"),
+            fullPage: true,
+          });
+          await page
+            .getByLabel("Model sürümü", { exact: true })
+            .selectOption("latest");
+          await waitFor(
+            async () =>
+              (await page.locator(".element-table tbody tr").count()) === 6,
+          );
+          await page.setViewportSize({ width: 390, height: 844 });
+          assert.equal(
+            await page.evaluate(
+              () => document.documentElement.scrollWidth <= window.innerWidth,
+            ),
+            true,
+          );
+          await page.evaluate(() => window.scrollTo(0, 0));
+          await page.screenshot({
+            path: join(evidenceDir, "11-elements-mobile.png"),
+            fullPage: true,
+          });
+          await page.setViewportSize({ width: 1440, height: 1000 });
+        },
+      );
+      await t.test(
+        "all ten locator types resolve in Chromium; zero, ambiguous and invalid selectors are honest",
+        async () => {
+          async function check(locator: LocatorSpec): Promise<LocatorCheck> {
+            const scheduled = await request(
+              `/v1/projects/${demoProject}/locator-checks`,
+              "POST",
+              { page: "login", locator },
+            );
+            return waitFor<LocatorCheck>(async () => {
+              const result = await request(
+                `/v1/projects/${demoProject}/locator-checks/${scheduled.id}`,
+              );
+              return !["queued", "running"].includes(result.status) && result;
+            }, 15000);
+          }
+          const samples: LocatorSpec[] = [
+            { kind: "id", value: "email" },
+            { kind: "css", value: "#email" },
+            { kind: "xpath", value: '//*[@id="email"]' },
+            { kind: "testId", value: "login-email" },
+            { kind: "label", value: "E-posta" },
+            { kind: "role", role: "button", value: "Giriş yap" },
+            { kind: "text", value: "Demo Bank" },
+            { kind: "placeholder", value: "E-posta adresin" },
+            { kind: "title", value: "Demo hesabıyla giriş yap" },
+            { kind: "altText", value: "Demo Bank logosu" },
+          ];
+          for (const locator of samples) {
+            const result = await check(locator);
+            assert.equal(result.status, "completed", locator.kind);
+            assert.ok(result.result && "count" in result.result);
+            assert.equal(result.result.count, 1, locator.kind);
+            assert.equal(result.result.resolution, "unique", locator.kind);
+          }
+          const missing = await check({ kind: "id", value: "not-present" });
+          assert.equal(
+            (missing.result as { resolution: string }).resolution,
+            "not_found",
+          );
+          const ambiguous = await check({ kind: "css", value: "input" });
+          assert.equal((ambiguous.result as { count: number }).count, 2);
+          assert.equal(
+            (ambiguous.result as { resolution: string }).resolution,
+            "ambiguous",
+          );
+          const invalid = await check({ kind: "css", value: "[" });
+          assert.equal(invalid.status, "failed");
+          assert.equal(
+            (invalid.result as { code: string }).code,
+            "INVALID_LOCATOR",
+          );
+          const escaped = await check({
+            kind: "id",
+            value: 'email"] >> css=input',
+          });
+          assert.equal(
+            (escaped.result as { count: number }).count,
+            0,
+            "HTML ID is an exact attribute value, not selector code",
+          );
+        },
+      );
+      await t.test(
+        "an approved alternative cannot silently replace a missing primary locator",
+        async () => {
+          const current = await request(`/v1/projects/${demoProject}`);
+          const element = structuredClone(
+            current.model.elements.find(
+              (e: { id: string }) => e.id === "login.submit",
+            ),
+          );
+          element.locator = { kind: "css", value: "#missing-login-submit" };
+          element.alternatives = [{ kind: "testId", value: "login-submit" }];
+          const changed = await request(
+            `/v1/projects/${demoProject}/elements/login.submit`,
+            "PUT",
+            { expectedRevision: current.model.revision, element },
+          );
+          const test: CanonicalTest = {
+            ...structuredClone(published),
+            testId: randomUUID(),
+            title: "[E2E] Sessiz fallback engeli",
+            appModelRef: {
+              ...published.appModelRef,
+              revision: changed.revision,
+            },
+          };
+          await request(`/v1/projects/${demoProject}/tests`, "POST", test);
+          const run = await request(
+            `/v1/tests/${test.testId}/runs`,
+            "POST",
+            { variant: "healthy" },
+            { "idempotency-key": randomUUID() },
+          );
+          const result = await waitRun(run.id);
+          assert.equal(result.status, "blocked");
+          assert.equal(result.outcome.code, "ELEMENT_NOT_FOUND");
+          assert.equal(result.outcome.assertionsExecuted, 0);
+        },
+      );
+      await t.test(
         "mobile layout has no horizontal page overflow",
         async () => {
           await page.setViewportSize({ width: 390, height: 844 });
@@ -361,6 +660,7 @@ test(
             ),
             true,
           );
+          await page.evaluate(() => window.scrollTo(0, 0));
           await page.screenshot({
             path: join(evidenceDir, "06-mobile.png"),
             fullPage: true,

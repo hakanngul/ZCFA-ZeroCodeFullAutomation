@@ -6,7 +6,11 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { Store } from "../packages/storage/src/index";
 import { createApp } from "../apps/api/src/app";
-import { compile, demoProject } from "../packages/domain/src/index";
+import {
+  compile,
+  demoProject,
+  type Element,
+} from "../packages/domain/src/index";
 import { admin, definition, model } from "./support";
 
 async function fixture() {
@@ -354,6 +358,278 @@ test("a worker cannot finalize PASS without matching assertions and screenshot e
     );
     assert.equal(f.store.run(admin, run.id).status, "infrastructure_error");
     assert.match(f.store.run(admin, run.id).outcome!, /INVALID_PASS_EVIDENCE/);
+  } finally {
+    await f.close();
+  }
+});
+
+test("element edits create a new revision and preserve published plans and history", async () => {
+  const f = await fixture();
+  try {
+    f.seedModel();
+    const original = definition();
+    f.store.publish(admin, original);
+    const before = compile(original, model());
+    const element: Element = {
+      ...model().elements[2]!,
+      locator: { kind: "css", value: '[data-testid="login-submit"]' },
+      alternatives: [
+        { kind: "xpath", value: '//*[@data-testid="login-submit"]' },
+        { kind: "role", role: "button", value: "Giriş yap" },
+      ],
+    };
+    const headers = f.headers();
+    const response = await f.app.inject({
+      method: "PUT",
+      url: `/v1/projects/${demoProject}/elements/login.submit`,
+      headers,
+      payload: { expectedRevision: 1, element },
+    });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.json().revision, 2);
+    assert.deepEqual(
+      compile(original, f.store.model(admin, demoProject, 1)),
+      before,
+    );
+    const next = {
+      ...original,
+      appModelRef: { ...original.appModelRef, revision: 2 },
+    };
+    assert.equal(
+      (compile(next, response.json()).steps[3] as { target: { kind: string } })
+        .target.kind,
+      "css",
+    );
+    const history = await f.app.inject({
+      url: `/v1/projects/${demoProject}/elements/history`,
+      headers,
+    });
+    assert.deepEqual(
+      history.json().revisions.map((r: { revision: number }) => r.revision),
+      [2, 1],
+    );
+    const old = await f.app.inject({
+      url: `/v1/projects/${demoProject}/elements?revision=1`,
+      headers,
+    });
+    assert.equal(old.json().elements[2].locator.kind, "testId");
+    const usage = await f.app.inject({
+      url: `/v1/projects/${demoProject}/elements/login.submit/usage`,
+      headers,
+    });
+    assert.equal(usage.json().tests[0].modelRevision, 1);
+    assert.equal(usage.json().flow, true);
+  } finally {
+    await f.close();
+  }
+});
+test("manual element creation works without discovery and stale revisions or duplicate IDs are rejected", async () => {
+  const f = await fixture();
+  try {
+    const headers = f.headers();
+    const element = {
+      ...model().elements[0]!,
+      approved: false,
+      locator: { kind: "id", value: "email" },
+      dom: { id: "email" },
+    };
+    const response = await f.app.inject({
+      method: "POST",
+      url: `/v1/projects/${demoProject}/elements`,
+      headers,
+      payload: { expectedRevision: 0, element },
+    });
+    assert.equal(response.statusCode, 201);
+    assert.equal(response.json().elements[0].id, "login.username");
+    assert.equal(response.json().elements[0].locator.value, "email");
+    const stale = await f.app.inject({
+      method: "PUT",
+      url: `/v1/projects/${demoProject}/elements/login.username`,
+      headers,
+      payload: { expectedRevision: 0, element },
+    });
+    assert.equal(stale.statusCode, 409);
+    const duplicate = await f.app.inject({
+      method: "POST",
+      url: `/v1/projects/${demoProject}/elements`,
+      headers,
+      payload: { expectedRevision: 1, element },
+    });
+    assert.equal(duplicate.statusCode, 409);
+    const renamed = await f.app.inject({
+      method: "PUT",
+      url: `/v1/projects/${demoProject}/elements/login.username`,
+      headers,
+      payload: {
+        expectedRevision: 1,
+        element: { ...element, id: "renamed.element" },
+      },
+    });
+    assert.equal(renamed.statusCode, 400);
+    assert.equal(f.store.model(admin, demoProject)!.revision, 1);
+  } finally {
+    await f.close();
+  }
+});
+test("element and locator-check endpoints enforce tenant scoping and viewer permissions", async () => {
+  const f = await fixture();
+  try {
+    f.seedModel();
+    const foreign = f.headers({ ...admin, orgId: randomUUID() });
+    for (const path of [
+      "elements",
+      "elements/history",
+      "elements/login.submit/usage",
+    ])
+      assert.equal(
+        (
+          await f.app.inject({
+            url: `/v1/projects/${demoProject}/${path}`,
+            headers: foreign,
+          })
+        ).statusCode,
+        404,
+      );
+    const payload = { expectedRevision: 1, element: model().elements[0] };
+    assert.equal(
+      (
+        await f.app.inject({
+          method: "POST",
+          url: `/v1/projects/${demoProject}/elements`,
+          headers: foreign,
+          payload,
+        })
+      ).statusCode,
+      404,
+    );
+    const viewer = f.headers({ ...admin, role: "viewer" });
+    for (const method of ["POST", "PUT"] as const)
+      assert.equal(
+        (
+          await f.app.inject({
+            method,
+            url: `/v1/projects/${demoProject}/elements${method === "PUT" ? "/login.username" : ""}`,
+            headers: viewer,
+            payload,
+          })
+        ).statusCode,
+        403,
+      );
+    assert.equal(
+      (
+        await f.app.inject({
+          method: "POST",
+          url: `/v1/projects/${demoProject}/locator-checks`,
+          headers: viewer,
+          payload: { page: "login", locator: { kind: "css", value: "button" } },
+        })
+      ).statusCode,
+      403,
+    );
+  } finally {
+    await f.close();
+  }
+});
+test("locator checks use isolated scoped jobs, terminal results and lease expiry", async () => {
+  const f = await fixture();
+  try {
+    f.seedModel();
+    const headers = f.headers();
+    const path = `/v1/projects/${demoProject}/locator-checks`;
+    const response = await f.app.inject({
+      method: "POST",
+      url: path,
+      headers,
+      payload: { page: "login", locator: { kind: "xpath", value: "//button" } },
+    });
+    assert.equal(response.statusCode, 202);
+    const id = response.json().id;
+    const job = f.store.claim()!;
+    assert.equal(job.kind, "locator_check");
+    assert.equal(
+      f.store.finishLocatorCheck(
+        job,
+        { count: 1, resolution: "unique", visible: true, durationMs: 10 },
+        "completed",
+      ),
+      true,
+    );
+    assert.equal(
+      f.store.finishLocatorCheck(job, { count: 0 }, "completed"),
+      false,
+    );
+    const result = await f.app.inject({ url: `${path}/${id}`, headers });
+    assert.equal(result.json().status, "completed");
+    assert.equal(result.json().result.count, 1);
+    assert.equal(
+      (
+        await f.app.inject({
+          url: `${path}/${id}`,
+          headers: f.headers({ ...admin, orgId: randomUUID() }),
+        })
+      ).statusCode,
+      404,
+    );
+    const second = await f.app.inject({
+      method: "POST",
+      url: path,
+      headers,
+      payload: { page: "dashboard", locator: { kind: "css", value: "h1" } },
+    });
+    const expired = f.store.claim()!;
+    f.store.db
+      .prepare("UPDATE jobs SET lease_until=? WHERE id=?")
+      .run(Date.now() - 1, expired.id);
+    f.store.claim();
+    const failed = await f.app.inject({
+      url: `${path}/${second.json().id}`,
+      headers,
+    });
+    assert.equal(failed.json().result.code, "WORKER_LEASE_EXPIRED");
+  } finally {
+    await f.close();
+  }
+});
+test("duplicate locators, arbitrary code and unknown page routes cannot be stored or checked", async () => {
+  const f = await fixture();
+  try {
+    f.seedModel();
+    const headers = f.headers();
+    const element = model().elements[0]!;
+    const duplicate = await f.app.inject({
+      method: "PUT",
+      url: `/v1/projects/${demoProject}/elements/login.username`,
+      headers,
+      payload: {
+        expectedRevision: 1,
+        element: { ...element, alternatives: [element.locator] },
+      },
+    });
+    assert.equal(duplicate.statusCode, 400);
+    assert.equal(duplicate.json().code, "DUPLICATE_LOCATOR");
+    for (const payload of [
+      {
+        page: "http://169.254.169.254",
+        locator: { kind: "css", value: "button" },
+      },
+      { page: "login", locator: { kind: "eval", value: "process.exit()" } },
+      {
+        page: "login",
+        locator: { kind: "css", value: "button" },
+        url: "http://evil.test",
+      },
+    ])
+      assert.equal(
+        (
+          await f.app.inject({
+            method: "POST",
+            url: `/v1/projects/${demoProject}/locator-checks`,
+            headers,
+            payload,
+          })
+        ).statusCode,
+        400,
+      );
   } finally {
     await f.close();
   }

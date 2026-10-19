@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./elements.css";
 export const metadata: Metadata = {
   title: "ZeroCode · Test çalışma alanı",
   description: "İş niyetinden kanıtlanabilir web testine.",

@@ -14,6 +14,7 @@ import {
   type StepResult,
   type Variant,
 } from "../../domain/src/index";
+import type { LocatorCheckResult } from "../../domain/src/locators";
 
 // Only public fixture values. This is deliberately not a production vault adapter.
 const fixtureInputs = {
@@ -24,7 +25,39 @@ export function locate(page: Page, spec: LocatorSpec): Locator {
   if (spec.kind === "label")
     return page.getByLabel(spec.value, { exact: true });
   if (spec.kind === "testId") return page.getByTestId(spec.value);
-  return page.getByRole(spec.role, { name: spec.value, exact: true });
+  if (spec.kind === "role")
+    return page.getByRole(spec.role, { name: spec.value, exact: true });
+  if (spec.kind === "id")
+    return page.locator(`css=[id=${cssString(spec.value)}]`);
+  if (spec.kind === "css" || spec.kind === "xpath")
+    return page.locator(`${spec.kind}=${spec.value}`);
+  if (spec.kind === "text") return page.getByText(spec.value, { exact: true });
+  if (spec.kind === "placeholder")
+    return page.getByPlaceholder(spec.value, { exact: true });
+  if (spec.kind === "title")
+    return page.getByTitle(spec.value, { exact: true });
+  return page.getByAltText(spec.value, { exact: true });
+}
+function cssString(value: string) {
+  return (
+    '"' +
+    value
+      .replace(/\0/g, "\uFFFD")
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"')
+      .replace(/\n/g, "\\a ")
+      .replace(/\r/g, "\\d ")
+      .replace(/\f/g, "\\c ") +
+    '"'
+  );
+}
+function xpathString(value: string): string {
+  if (!value.includes('"')) return `"${value}"`;
+  if (!value.includes("'")) return `'${value}'`;
+  return `concat(${value
+    .split('"')
+    .map((part) => `"${part}"`)
+    .join(",'\"',")})`;
 }
 async function guardedContext(browser: Browser) {
   const context = await browser.newContext({
@@ -50,6 +83,37 @@ export async function launchBrowser() {
     headless: true,
     timeout: 10000,
   });
+}
+export async function checkLocator(
+  browser: Browser,
+  pageName: "login" | "dashboard",
+  spec: LocatorSpec,
+): Promise<LocatorCheckResult> {
+  const context = await guardedContext(browser),
+    started = Date.now();
+  try {
+    const page = await context.newPage();
+    await page.goto(
+      `${fixtureOrigin}${pageName === "login" ? "/login" : "/dashboard-preview"}`,
+      { timeout: 5000, waitUntil: "domcontentloaded" },
+    );
+    const locator = locate(page, spec);
+    let count: number;
+    try {
+      count = await locator.count();
+    } catch {
+      throw new DomainError("INVALID_LOCATOR", "Locator söz dizimi geçersiz.");
+    }
+    return {
+      count,
+      resolution:
+        count === 1 ? "unique" : count === 0 ? "not_found" : "ambiguous",
+      visible: count === 1 ? await locator.isVisible() : null,
+      durationMs: Date.now() - started,
+    };
+  } finally {
+    await context.close();
+  }
 }
 async function unique(page: Page, spec: LocatorSpec) {
   const locator = locate(page, spec);
@@ -91,6 +155,18 @@ export async function discover(
               node.textContent?.trim().slice(0, 120) ??
               "",
             testId: node.getAttribute("data-testid")!,
+            domId: node.getAttribute("id") ?? "",
+            domName: node.getAttribute("name") ?? "",
+            role:
+              node.getAttribute("role") ??
+              (
+                { BUTTON: "button", H1: "heading", H2: "heading" } as Record<
+                  string,
+                  string
+                >
+              )[node.tagName] ??
+              "",
+            tag: node.tagName,
           })),
         );
       for (const candidate of candidates) {
@@ -99,6 +175,37 @@ export async function discover(
           id: candidate.id,
           label: candidate.label,
           locator: { kind: "testId", value: candidate.testId },
+          alternatives: [
+            ...(candidate.domId
+              ? [{ kind: "id" as const, value: candidate.domId }]
+              : []),
+            {
+              kind: "css" as const,
+              value: `[data-testid=${cssString(candidate.testId)}]`,
+            },
+            {
+              kind: "xpath" as const,
+              value: `//*[@data-testid=${xpathString(candidate.testId)}]`,
+            },
+            ...(candidate.role === "button" || candidate.role === "heading"
+              ? [
+                  {
+                    kind: "role" as const,
+                    role: candidate.role as "button" | "heading",
+                    value: candidate.label,
+                  },
+                ]
+              : candidate.tag === "INPUT"
+                ? [{ kind: "label" as const, value: candidate.label }]
+                : []),
+          ],
+          dom: {
+            id: candidate.domId,
+            name: candidate.domName,
+            testId: candidate.testId,
+            role: candidate.role,
+            accessibleName: candidate.label,
+          },
           approved: false,
           page: pageName,
         });

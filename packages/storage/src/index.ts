@@ -7,10 +7,12 @@ import {
   demoOrg,
   demoProject,
   DomainError,
+  elementSchema,
   type Actor,
   type AppModel,
   type CanonicalTest,
   type ExecutionPlan,
+  type Element,
   type RunOutcome,
   type Variant,
 } from "../../domain/src/index";
@@ -20,7 +22,7 @@ export type Job = {
   id: string;
   org_id: string;
   project_id: string;
-  kind: "discovery" | "run";
+  kind: "discovery" | "run" | "locator_check";
   payload: string;
   lease_token: string;
   lease_until: number;
@@ -47,6 +49,15 @@ export class Store {
     this.db.exec(
       readFileSync(
         new URL("../../../infra/migrations/001_initial.sql", import.meta.url),
+        "utf8",
+      ),
+    );
+    this.db.exec(
+      readFileSync(
+        new URL(
+          "../../../infra/migrations/002_locator_checks.sql",
+          import.meta.url,
+        ),
         "utf8",
       ),
     );
@@ -118,6 +129,74 @@ export class Store {
           new Date().toISOString(),
         );
       this.audit(actor, test.projectId, "test.published", test.testId);
+    });
+  }
+  saveElement(
+    actor: Actor,
+    projectId: string,
+    input: Element,
+    expectedRevision: number,
+    existingId?: string,
+  ): AppModel {
+    this.project(actor, projectId);
+    const element = elementSchema.parse(input);
+    if (existingId && element.id !== existingId)
+      throw new DomainError(
+        "ELEMENT_ID_IMMUTABLE",
+        "Element anahtarı değiştirilemez.",
+      );
+    const candidates = [element.locator, ...(element.alternatives ?? [])].map(
+      (l) => JSON.stringify(l),
+    );
+    if (new Set(candidates).size !== candidates.length)
+      throw new DomainError(
+        "DUPLICATE_LOCATOR",
+        "Aynı locator bir kez tanımlanabilir.",
+      );
+    return this.transaction(() => {
+      const previous = this.model(actor, projectId);
+      if ((previous?.revision ?? 0) !== expectedRevision)
+        throw new DomainError(
+          "REVISION_CONFLICT",
+          "Model değişti. Güncel sürümü açıp değişikliği tekrar uygula.",
+          409,
+        );
+      const exists = previous?.elements.some((e) => e.id === element.id);
+      if (existingId && !exists)
+        throw new DomainError("NOT_FOUND", "Element bulunamadı.", 404);
+      if (!existingId && exists)
+        throw new DomainError(
+          "ELEMENT_EXISTS",
+          "Bu element anahtarı zaten kullanılıyor.",
+          409,
+        );
+      const revision = expectedRevision + 1;
+      const elements = existingId
+        ? previous!.elements.map((e) => (e.id === existingId ? element : e))
+        : [...(previous?.elements ?? []), element];
+      const model: AppModel = {
+        orgId: actor.orgId,
+        projectId,
+        applicationId: previous?.applicationId ?? demoApplication,
+        revision,
+        elements,
+        flow: previous?.flow ?? {
+          id: "login",
+          revision: 1,
+          name: "Geçerli demo hesabıyla giriş yap",
+          targets: ["login.username", "login.password", "login.submit"],
+        },
+      };
+      this.db
+        .prepare("INSERT INTO models VALUES (?,?,?,?)")
+        .run(actor.orgId, projectId, revision, JSON.stringify(model));
+      this.audit(
+        actor,
+        projectId,
+        existingId ? "element.updated" : "element.created",
+        element.id,
+      );
+      return model;
     });
   }
   test(actor: Actor, id: string): CanonicalTest {
@@ -227,6 +306,16 @@ export class Store {
               job.id,
               job.org_id,
             );
+        else if (job.kind === "locator_check")
+          this.db
+            .prepare(
+              "UPDATE locator_checks SET status='failed',result=? WHERE id=? AND org_id=? AND status='running'",
+            )
+            .run(
+              JSON.stringify({ code: "WORKER_LEASE_EXPIRED" }),
+              job.id,
+              job.org_id,
+            );
         else
           this.db
             .prepare("UPDATE scans SET status='failed' WHERE id=? AND org_id=?")
@@ -246,13 +335,47 @@ export class Store {
           "UPDATE jobs SET status='running',lease_token=?,lease_until=? WHERE id=?",
         )
         .run(token, until, job.id);
-      const table = job.kind === "run" ? "runs" : "scans";
+      const table =
+        job.kind === "run"
+          ? "runs"
+          : job.kind === "locator_check"
+            ? "locator_checks"
+            : "scans";
       this.db
         .prepare(
           `UPDATE ${table} SET status='running' WHERE id=? AND org_id=? AND status='queued'`,
         )
         .run(job.id, job.org_id);
       return { ...job, lease_token: token, lease_until: until };
+    });
+  }
+  finishLocatorCheck(
+    job: Job,
+    result: unknown,
+    status: "completed" | "failed",
+  ) {
+    return this.transaction(() => {
+      const valid = this.db
+        .prepare(
+          "SELECT id FROM jobs WHERE id=? AND org_id=? AND project_id=? AND status='running' AND lease_token=? AND lease_until>=?",
+        )
+        .get(job.id, job.org_id, job.project_id, job.lease_token, Date.now());
+      if (!valid) return false;
+      const changed = this.db
+        .prepare(
+          "UPDATE locator_checks SET status=?,result=? WHERE id=? AND org_id=? AND project_id=? AND status='running'",
+        )
+        .run(
+          status,
+          JSON.stringify(result),
+          job.id,
+          job.org_id,
+          job.project_id,
+        );
+      this.db
+        .prepare("UPDATE jobs SET status='done' WHERE id=? AND lease_token=?")
+        .run(job.id, job.lease_token);
+      return changed.changes === 1;
     });
   }
   finish(job: Job, outcome: RunOutcome) {

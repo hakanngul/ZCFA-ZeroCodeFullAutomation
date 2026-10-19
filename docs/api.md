@@ -31,3 +31,31 @@ Hatalar `{code, message, requestId}` biçimindedir. `401` oturum eksik/süresi d
 `403` rol/kaynak/kapsam engeli, `404` görünmeyen nesne, `409` sürüm/idempotency/durum
 çakışması, `429` kuyruk limiti anlamına gelir. Özel hata stack'i veya credential
 değeri response'a eklenmez. Tam OpenAPI sözleşmesi gelecek artıma bırakıldı.
+
+## Elementler ve locator denemeleri
+
+| Metot | Yol                                               | Sonuç                                               |
+| ----- | ------------------------------------------------- | --------------------------------------------------- |
+| GET   | /v1/projects/:projectId/elements                  | Güncel liste; `?revision=N` ile geçmiş              |
+| POST  | /v1/projects/:projectId/elements                  | `{expectedRevision, element}` → yeni model revision |
+| PUT   | /v1/projects/:projectId/elements/:elementId       | Aynı gövde; sabit element anahtarı değiştirilemez   |
+| GET   | /v1/projects/:projectId/elements/history          | Son 100 model sürümü ve element sayıları            |
+| GET   | /v1/projects/:projectId/elements/:elementId/usage | Kullanıldığı flow ve yayınlanmış test sürümleri     |
+| POST  | /v1/projects/:projectId/locator-checks            | `{page, locator}` → 202 / ayrı worker işi           |
+| GET   | /v1/projects/:projectId/locator-checks/:id        | Durum, gönderilen locator ve gerçek eşleşme sonucu  |
+
+Element gövdesi `id`, `label`, `page`, `locator`, `approved` ve isteğe bağlı
+`alternatives` (en fazla 5), `dom` alanlarını içerir. `page` yalnız `login` veya
+`dashboard` olabilir. Locator `{kind, value}`; `role` türünde ek `role` alanı
+zorunludur. HTML ID `kind: id`, test niteliği `kind: testId` olarak ayrılır.
+Şema `packages/domain/src/locators.ts` dosyasında tanımlıdır; diğer alanlar ve
+arbitrary code reddedilir. Aynı locator birincil ve alternatifte tekrarlanamaz.
+
+`expectedRevision` 0 ile keşif yapmadan ilk manuel kayıt açılabilir. Eksik/onaysız
+referanslar test yayınlamayı yine bloke eder. Her düzenleme yeni immutable
+AppModel revision'ıdır; önceki published testlere uygulanmaz. `REVISION_CONFLICT`
+409 döndürür. Viewer oluşturma/düzenleme/locator işi başlatamaz. Tüm okuma ve işler
+org/project kapsamındadır. Sonuç `count`, `resolution` (`unique`, `not_found`,
+`ambiguous`), `visible` ve `durationMs` içerir. Geçersiz söz dizimi
+`INVALID_LOCATOR` ile sonuçlanır; snapshot geri yükleme bu denemenin geçmişteki
+uygulamayı açtığı anlamına gelmez: deneme canlı yerel demo hedefinde yapılır.
