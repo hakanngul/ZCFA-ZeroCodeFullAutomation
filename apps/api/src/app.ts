@@ -5,6 +5,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Store, localDir } from "../../../packages/storage/src/index";
+import { registerAssistant } from "./assistant";
 import {
   compile,
   demoApplication,
@@ -94,6 +95,7 @@ export async function createApp(store = new Store()) {
       throw new DomainError("FORBIDDEN", "Düzenleme yetkisi gerekli.", 403);
     return user;
   };
+  registerAssistant(app, store, actor);
   app.get("/health", async () => ({
     status: "ok",
     service: "zerocode-api",
@@ -170,6 +172,16 @@ export async function createApp(store = new Store()) {
       model: store.model(user, projectId),
       scans,
       tests,
+      aiSuiteCount: store.db
+        .prepare(
+          "SELECT count(*) AS n FROM ai_suites WHERE org_id=? AND project_id=?",
+        )
+        .get(user.orgId, projectId)!.n,
+      aiRunCounts: store.db
+        .prepare(
+          "SELECT count(*) AS total,coalesce(sum(status='passed'),0) AS passed,coalesce(sum(status IN ('queued','running')),0) AS pending FROM ai_suite_runs WHERE org_id=? AND project_id=?",
+        )
+        .get(user.orgId, projectId),
       runs,
       audit,
     };

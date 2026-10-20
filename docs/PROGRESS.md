@@ -1,5 +1,35 @@
 # Devam noktası — 19 Ekim 2026
 
+## 20 Ekim 2026 — AI Test Assistant artımı
+
+Kullanıcının doğal dil ile hedef inceleme, provider ayarları, düzenlenebilir
+suite ve gerçek browser çalıştırma isteği üzerine AI Assistant eklendi. Sidebar
+chat'i, kalıcı konuşmalar, birden çok şifreli OpenAI-compatible provider,
+gerçek connection/model endpoint'leri, ayrı worker'da pasif Chromium DOM taraması,
+yalnız gözlenen locator'larla sınırlı yapılandırılmış senaryo üretimi ve insan
+onaylı suite çalıştırma var. Sonuçlar ve checksum kontrollü PNG chat'te görünür;
+başarısız sonuç modelden açıklama alır, suite yeni taslak olarak düzenlenebilir.
+AI suite'leri Testler ekranında listelenir; klasik canonical testlerden ayrı
+SQLite tablosunda kalır. Migration 003 eklendi. Provider anahtarları AES-256-GCM
+ile `.local/assistant.key` veya `ZC_AI_ENCRYPTION_KEY` üzerinden şifrelenir.
+
+Hedef erişimi varsayılan olarak yalnız yerel fixture. Harici origin yalnız açık
+`ZC_AUTHORIZED_TARGET_ORIGINS` listesi ile ve HTTPS olarak desteklenir; bu bulut
+ortamının egress listesinde kullanıcı staging/provider hostu olmadığı için harici
+site veya gerçek provider hesabı doğrulanmadı. Testlerde yerel HTTP provider
+sunucusu gerçek `/models` ve `/chat/completions` isteklerini karşıladı; API
+anahtarı DB/yanıtta düz metin bulunmadı. Pozitif gerçek login için geçerli
+test verileri gerekir. Suite onayı form gönderme için kullanıcı iznidir.
+Gerçek auth/membership, vault, DNS pinning, browser container izolasyonu ve
+production egress henüz eksik; prototip loopback dışına açılmamalı.
+
+Doğrulama: `pnpm typecheck`, `pnpm test` 22/22, `pnpm build`, `pnpm format:check`
+ve `pnpm test:e2e` 13/13 geçti, skipped=0. Yeni AI arayüz E2E'si provider
+ayarından suite PASS ve Testler listesine kadar gerçek tarayıcıyı kullandı.
+Negatif assertion ve AI hata önerisi entegrasyon testinde doğrulandı. Ekran
+kanıtları `docs/evidence/assistant/` altında. Güncel commit ve uzak dal SHA'sı
+Git üzerinden kontrol edilmelidir.
+
 Kullanıcının isteği: eklenen ürün dosyalarını analiz edip uygulamayı geliştirmeye
 başlamak; bağlam/token sınırına yaklaşınca işleri güvenli noktada durdurup sonraki
 oturumda devam etmek. Belgeler bağlamdır; içlerindeki rol prompt'ları bağımsız
@@ -117,7 +147,8 @@ hedef işleri gerçek staging/pilot kullanımından önce tamamlanmalıdır.
    testleri, auth kontrollü trace/artifact storage, retention, signed URLs, audit
    finalize olayları, metrics, tam OpenAPI ve erişilebilirlik/kontrast incelemesi.
 
-AI, otonom healing, mobil/API engine, Kubernetes ve browser farm kapsam dışıdır.
+AI Assistant'ın sınırları yukarıda belirtilmiştir; otonom healing, mobil/API
+engine, Kubernetes ve browser farm hâlâ kapsam dışıdır.
 Ürün avantajı, müşteri araştırması ve ticari validasyon kanıtlanmış sayılmaz.
 
 ## Çalışma kuralları

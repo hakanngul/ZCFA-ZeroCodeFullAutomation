@@ -1,5 +1,8 @@
 # İlk prototipin ekranları ve çalıştırma verileri
 
+Güncel **AI Test Assistant** ekranları ve doğrulama kaydı
+[assistant/](assistant/README.md) klasöründedir.
+
 Güncel **Elementler** sayfasının masaüstü/mobil ekranları ve doğrulama kaydı
 [elements/](elements/README.md) klasöründedir. Aşağıdaki veritabanları ilk prototipin
 arşividir; yeni ekranın çalışması bunları değiştirmez.

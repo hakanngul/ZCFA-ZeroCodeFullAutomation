@@ -22,7 +22,7 @@ export type Job = {
   id: string;
   org_id: string;
   project_id: string;
-  kind: "discovery" | "run" | "locator_check";
+  kind: "discovery" | "run" | "locator_check" | "ai_analysis" | "ai_suite";
   payload: string;
   lease_token: string;
   lease_until: number;
@@ -43,7 +43,9 @@ export type Run = {
 
 export class Store {
   db: DatabaseSync;
+  dataDir: string;
   constructor(path = resolve(localDir, "zerocode.sqlite")) {
+    this.dataDir = dirname(path);
     mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
     this.db.exec(
@@ -56,6 +58,15 @@ export class Store {
       readFileSync(
         new URL(
           "../../../infra/migrations/002_locator_checks.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    this.db.exec(
+      readFileSync(
+        new URL(
+          "../../../infra/migrations/003_ai_assistant.sql",
           import.meta.url,
         ),
         "utf8",
@@ -284,7 +295,7 @@ export class Store {
       return this.run(actor, id);
     });
   }
-  claim(leaseMs = 45000): Job | undefined {
+  claim(leaseMs = 180000): Job | undefined {
     return this.transaction(() => {
       const expired = this.db
         .prepare("SELECT * FROM jobs WHERE status='running' AND lease_until<?")
@@ -302,6 +313,23 @@ export class Store {
                 steps: [],
                 assertionsExecuted: 0,
               }),
+              new Date().toISOString(),
+              job.id,
+              job.org_id,
+            );
+        else if (job.kind === "ai_analysis")
+          this.db
+            .prepare(
+              "UPDATE ai_drafts SET status='failed',error_code='WORKER_LEASE_EXPIRED' WHERE id=? AND org_id=?",
+            )
+            .run(job.id, job.org_id);
+        else if (job.kind === "ai_suite")
+          this.db
+            .prepare(
+              "UPDATE ai_suite_runs SET status='infrastructure_error',result=?,finished_at=? WHERE id=? AND org_id=?",
+            )
+            .run(
+              JSON.stringify({ code: "WORKER_LEASE_EXPIRED" }),
               new Date().toISOString(),
               job.id,
               job.org_id,
@@ -340,7 +368,11 @@ export class Store {
           ? "runs"
           : job.kind === "locator_check"
             ? "locator_checks"
-            : "scans";
+            : job.kind === "ai_analysis"
+              ? "ai_drafts"
+              : job.kind === "ai_suite"
+                ? "ai_suite_runs"
+                : "scans";
       this.db
         .prepare(
           `UPDATE ${table} SET status='running' WHERE id=? AND org_id=? AND status='queued'`,

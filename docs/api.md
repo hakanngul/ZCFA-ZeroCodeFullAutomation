@@ -59,3 +59,30 @@ org/project kapsamındadır. Sonuç `count`, `resolution` (`unique`, `not_found`
 `ambiguous`), `visible` ve `durationMs` içerir. Geçersiz söz dizimi
 `INVALID_LOCATOR` ile sonuçlanır; snapshot geri yükleme bu denemenin geçmişteki
 uygulamayı açtığı anlamına gelmez: deneme canlı yerel demo hedefinde yapılır.
+
+## AI Assistant ve suite
+
+| Metot      | Yol                                                    | Sonuç                                              |
+| ---------- | ------------------------------------------------------ | -------------------------------------------------- |
+| GET/POST   | /v1/ai/providers                                       | Anahtarsız liste / şifreli provider kaydı          |
+| PUT/DELETE | /v1/ai/providers/:id                                   | Provider düzenle / sil                             |
+| POST       | /v1/ai/providers/:id/activate                          | Aktif provider seç                                 |
+| POST       | /v1/ai/providers/connection                            | Gerçek chat completion bağlantı testi              |
+| POST       | /v1/ai/providers/models                                | Gerçek model listesi                               |
+| GET        | /v1/projects/:projectId/ai/conversations               | Konuşma geçmişi                                    |
+| GET        | /v1/projects/:projectId/ai/conversations/:id           | Mesaj, taslak ve çalışma geçmişi                   |
+| POST       | /v1/projects/:projectId/ai/messages                    | Prompt → kuyruklu browser incelemesi ve AI taslağı |
+| GET        | /v1/projects/:projectId/ai/suites                      | Onaylanan suite listesi                            |
+| POST       | /v1/projects/:projectId/ai/drafts/:id/save             | Düzenlenen suite'i insan onayıyla kaydet           |
+| POST       | /v1/projects/:projectId/ai/suites/:id/revise           | Suite'i yeni taslak olarak aç                      |
+| POST       | /v1/projects/:projectId/ai/suites/:id/runs             | Ayrı worker'da gerçek suite çalıştırma             |
+| GET        | /v1/projects/:projectId/ai/runs/:id                    | Durum ve senaryo sonuçları                         |
+| GET        | /v1/projects/:projectId/ai/runs/:id/screenshots/:index | Auth/org/checksum kontrollü PNG                    |
+
+`aiSuiteSchema` yalnız `fill`, `click`, `assertVisible`, `assertText` ve
+`assertUrl` adımlarını kabul eder. Her senaryoda açık assertion zorunludur.
+Analizden dönen locator'lar incelenen DOM'da gözlenmiş olmalı; kullanıcı da
+onaydan önce yalnız bu locator'ları saklayabilir. En fazla 4 senaryo ve her
+senaryoda 8 adım vardır. Her senaryo 30 saniye ile sınırlıdır; otomatik retry yok.
+Provider kimlik bilgisi response, log ve artifact içinde dönmez. Harici hedef
+yalnız yapılandırılmış tam HTTPS origin listesinde çalışır.

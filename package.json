@@ -14,8 +14,8 @@
     "dev:worker": "tsx apps/worker/src/main.ts",
     "dev:fixture": "tsx tests/fixtures/server.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/domain.test.ts tests/api.test.ts",
-    "test:e2e": "tsx --test --test-concurrency=1 tests/e2e.test.ts",
+    "test": "tsx --test tests/domain.test.ts tests/api.test.ts tests/assistant.test.ts",
+    "test:e2e": "tsx --test --test-concurrency=1 tests/e2e.test.ts tests/assistant-ui.test.ts",
     "build": "next build apps/web",
     "format": "prettier --write apps packages scripts tests package.json tsconfig.json pnpm-workspace.yaml .github README.md docs/api.md docs/PROGRESS.md docs/decisions",
     "format:check": "prettier --check apps packages scripts tests package.json tsconfig.json pnpm-workspace.yaml .github README.md docs/api.md docs/PROGRESS.md docs/decisions"

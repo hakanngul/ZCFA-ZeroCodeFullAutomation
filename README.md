@@ -80,6 +80,48 @@ taşıma henüz yoktur. Element onayını kaldırma desteklenir.
 
 ## Mimari
 
+## AI Test Assistant
+
+Sol menüden **AI Test Assistant** açılır. **AI Settings** içinde OpenAI-compatible
+provider adı, Base URL (`/v1` dahil), API anahtarı, model ve timeout girilir.
+**Test Connection** gerçek `chat/completions` isteği yapar; **Fetch Models** gerçek
+`models` endpoint'ini okur. Model listeleme yoksa model ID elle yazılabilir.
+Birden fazla provider saklanabilir; aktif olan chat'te seçilir. API anahtarı
+tarayıcıya geri dönmez, yerel SQLite'da AES-256-GCM ile şifreli tutulur.
+Şifreleme anahtarı varsayılan olarak ignore edilen `.local/assistant.key` dosyasında
+0600 izinleriyle üretilir; kalıcı ortamlarda 32 bayt base64
+`ZC_AI_ENCRYPTION_KEY` kullanılabilir. Anahtarı kaybetmek kayıtlı provider
+anahtarlarını okunamaz yapar.
+
+Chat'te hedef URL ve test isteği gönderilir; URL doğrudan prompt'ta yazılırsa
+hedef alanına da uygulanır. Ayrı worker gerçek Chromium ile
+hedef sayfanın DOM öğelerini pasif inceler, seçilen modele gözlemleri gönderir.
+Model yalnız gözlenen locator'larla yapılandırılmış suite taslağı döndürebilir.
+Taslak JSON olarak düzenlenir, insan onayıyla kaydedilir; `Testler` ekranındaki
+**AI suite’ler** listesinde ve chat'te görünür. Çalıştırma her senaryoyu ayrı
+Chromium context'inde yürütür; durum, adım hataları, başarılı/başarısız/atlanan
+sayıları ve yetki/checksum kontrollü ekran görüntüsü chat'te görünür. Başarısız
+suite için modelden hata önerisi istenir; suite yeni taslak olarak düzeltilip
+tekrar onaylanabilir. Kod çalıştırma, otomatik locator değiştirme ve sınırsız
+agent döngüsü yoktur.
+
+Hedef varsayılan olarak yalnız `http://127.0.0.1:4100` demo origin'idir. Ek
+**yetkili** HTTPS origin'leri, API ve worker ortamında virgülle ayrılmış
+`ZC_AUTHORIZED_TARGET_ORIGINS` ile açıkça tanımlanmalıdır. İçerik ve kaynak
+istekleri aynı origin'e kısıtlıdır. Harici hedefin ağ erişimi ayrıca çalıştırma
+ortamının egress politikasına bağlıdır. Provider Base URL'i harici kullanımda
+HTTPS ve public adres ister. Özel geliştirme testinde yerel provider için
+`ZC_AI_ALLOW_LOCAL_PROVIDER=1` kullanılabilir; üretim ayarı değildir.
+
+Pozitif giriş testi için geçerli test hesabı/verisi gereklidir; AI bunları
+uydurmaz. Kullanıcının onayladığı suite'deki `fill` ve `click` adımları gerçek
+hedefte yan etki yapabilir. Henüz gerçek üyelik/auth, secret vault, DNS pinning,
+izole browser container ve harici staging doğrulaması yoktur; bu prototipi
+güvenilmeyen hedeflere veya üretim hesaplarına açmayın. AI suite'leri mevcut
+canonical Demo Bank testlerinden ayrı veri modelinde tutulur.
+
+## Mimari
+
 - `apps/web`: Next.js Türkçe çalışma alanı; business / flow / technical projeksiyonları.
 - `apps/api`: Fastify; oturum, yetki, mapping onayı, publish, queue ve artifact erişimi.
 - `apps/worker`: ayrı proses; kuyruktan tek iş alır, tarayıcı context'ini izole eder.

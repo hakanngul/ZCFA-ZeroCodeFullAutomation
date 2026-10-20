@@ -7,6 +7,16 @@ import {
   checkLocator,
 } from "../../../packages/runner/src/index";
 import { DomainError, locatorSchema } from "../../../packages/domain/src/index";
+import {
+  authorizedTarget,
+  inspect,
+  generateSuite,
+  executeSuite,
+} from "../../../packages/assistant/src/agent";
+import type { Provider } from "../../../packages/assistant/src/provider";
+import { providerRequest } from "../../../packages/assistant/src/provider";
+import { aiSuiteSchema } from "../../../packages/assistant/src/spec";
+import { randomUUID } from "node:crypto";
 
 const store = new Store();
 let stopping = false;
@@ -61,6 +71,162 @@ while (!stopping) {
         locatorSchema.parse(JSON.parse(row.locator as string)),
       );
       store.finishLocatorCheck(job, result, "completed");
+    } else if (job.kind === "ai_analysis") {
+      const draft = store.db
+        .prepare(
+          "SELECT * FROM ai_drafts WHERE id=? AND org_id=? AND project_id=?",
+        )
+        .get(job.id, job.org_id, job.project_id);
+      if (!draft) throw new DomainError("NOT_FOUND", "AI taslağı bulunamadı.");
+      const provider = store.db
+        .prepare("SELECT * FROM ai_providers WHERE id=? AND org_id=?")
+        .get(draft.provider_id as string, job.org_id) as Provider | undefined;
+      if (!provider)
+        throw new DomainError("PROVIDER_MISSING", "Provider silinmiş.");
+      const target = authorizedTarget(draft.target_url as string);
+      const inspection = await inspect(browser, target);
+      const suite = await generateSuite(
+        provider,
+        draft.model as string,
+        JSON.parse(job.payload).prompt,
+        target,
+        inspection,
+      );
+      store.transaction(() => {
+        const valid = store.db
+          .prepare(
+            "SELECT id FROM jobs WHERE id=? AND status='running' AND lease_token=? AND lease_until>=?",
+          )
+          .get(job.id, job.lease_token, Date.now());
+        if (!valid) return;
+        store.db
+          .prepare(
+            "UPDATE ai_drafts SET status='ready',inspection=?,definition=? WHERE id=? AND org_id=?",
+          )
+          .run(
+            JSON.stringify(inspection),
+            JSON.stringify(suite),
+            job.id,
+            job.org_id,
+          );
+        store.db
+          .prepare("INSERT INTO ai_messages VALUES (?,?,?,?,?)")
+          .run(
+            randomUUID(),
+            draft.conversation_id,
+            "assistant",
+            `Sayfa incelendi: ${inspection.elements.length} element. ${suite.scenarios.length} senaryo taslağı hazır. Kaydetmeden önce düzenleyip onaylayın.`,
+            new Date().toISOString(),
+          );
+        store.db
+          .prepare("UPDATE jobs SET status='done' WHERE id=? AND lease_token=?")
+          .run(job.id, job.lease_token);
+      });
+    } else if (job.kind === "ai_suite") {
+      const row = store.db
+        .prepare(
+          "SELECT s.definition,s.draft_id,d.conversation_id FROM ai_suite_runs r JOIN ai_suites s ON s.id=r.suite_id JOIN ai_drafts d ON d.id=s.draft_id WHERE r.id=? AND r.org_id=? AND r.project_id=?",
+        )
+        .get(job.id, job.org_id, job.project_id);
+      if (!row)
+        throw new DomainError("NOT_FOUND", "Suite çalışması bulunamadı.");
+      const result = await executeSuite(
+        browser,
+        aiSuiteSchema.parse(JSON.parse(row.definition as string)),
+        resolve(localDir, "artifacts", job.id),
+      );
+      let advice: string | undefined;
+      if (result.status === "failed") {
+        const original = store.db
+          .prepare(
+            "SELECT d.provider_id,d.model,d.inspection FROM ai_drafts d WHERE d.id=? AND d.org_id=?",
+          )
+          .get(row.draft_id as string, job.org_id);
+        const provider = original
+          ? (store.db
+              .prepare("SELECT * FROM ai_providers WHERE id=? AND org_id=?")
+              .get(original.provider_id as string, job.org_id) as
+              Provider | undefined)
+          : undefined;
+        if (provider)
+          try {
+            const response = (await providerRequest(
+              provider,
+              "chat/completions",
+              {
+                model: original!.model,
+                max_tokens: 220,
+                messages: [
+                  {
+                    role: "system",
+                    content:
+                      "Explain browser test failure using only the supplied step kinds and error codes. Suggest one safe locator or wait improvement. Do not invent test PASS or ask for secrets. No actions are performed.",
+                  },
+                  {
+                    role: "user",
+                    content: JSON.stringify({
+                      failures: result.results
+                        .filter((r) => r.status === "failed")
+                        .map((r) => ({
+                          title: r.title,
+                          code: r.code,
+                          steps: r.steps,
+                        })),
+                      observedElements: JSON.parse(
+                        original!.inspection as string,
+                      ).elements.map((e: { locator: unknown }) => e.locator),
+                    }),
+                  },
+                ],
+              },
+            )) as { choices?: { message?: { content?: string } }[] };
+            advice = response.choices?.[0]?.message?.content?.slice(0, 1000);
+          } catch {
+            advice =
+              "AI hata analizi alınamadı; adım hata kodlarını inceleyin.";
+          }
+      }
+      store.transaction(() => {
+        const valid = store.db
+          .prepare(
+            "SELECT id FROM jobs WHERE id=? AND status='running' AND lease_token=? AND lease_until>=?",
+          )
+          .get(job.id, job.lease_token, Date.now());
+        if (!valid) return;
+        store.db
+          .prepare(
+            "UPDATE ai_suite_runs SET status=?,result=?,finished_at=? WHERE id=? AND org_id=? AND status='running'",
+          )
+          .run(
+            result.status,
+            JSON.stringify(result),
+            new Date().toISOString(),
+            job.id,
+            job.org_id,
+          );
+        store.db
+          .prepare("INSERT INTO ai_messages VALUES (?,?,?,?,?)")
+          .run(
+            randomUUID(),
+            row.conversation_id,
+            "assistant",
+            `Suite tamamlandı: ${result.counts.passed} başarılı, ${result.counts.failed} başarısız, ${result.counts.skipped} atlandı.`,
+            new Date().toISOString(),
+          );
+        if (advice)
+          store.db
+            .prepare("INSERT INTO ai_messages VALUES (?,?,?,?,?)")
+            .run(
+              randomUUID(),
+              row.conversation_id,
+              "assistant",
+              `Hata analizi: ${advice}`,
+              new Date().toISOString(),
+            );
+        store.db
+          .prepare("UPDATE jobs SET status='done' WHERE id=? AND lease_token=?")
+          .run(job.id, job.lease_token);
+      });
     } else {
       const run = store.db
         .prepare(
@@ -99,6 +265,49 @@ while (!stopping) {
         code: "WORKER_ERROR",
         steps: [],
         assertionsExecuted: 0,
+      });
+    else if (job.kind === "ai_analysis")
+      store.transaction(() => {
+        const draft = store.db
+          .prepare(
+            "SELECT conversation_id FROM ai_drafts WHERE id=? AND org_id=?",
+          )
+          .get(job.id, job.org_id);
+        const code = error instanceof DomainError ? error.code : "AGENT_ERROR";
+        store.db
+          .prepare(
+            "UPDATE ai_drafts SET status='failed',error_code=? WHERE id=? AND org_id=? AND status='running'",
+          )
+          .run(code, job.id, job.org_id);
+        if (draft)
+          store.db
+            .prepare("INSERT INTO ai_messages VALUES (?,?,?,?,?)")
+            .run(
+              randomUUID(),
+              draft.conversation_id,
+              "assistant",
+              `Analiz tamamlanamadı: ${code}`,
+              new Date().toISOString(),
+            );
+        store.db
+          .prepare("UPDATE jobs SET status='done' WHERE id=? AND lease_token=?")
+          .run(job.id, job.lease_token);
+      });
+    else if (job.kind === "ai_suite")
+      store.transaction(() => {
+        store.db
+          .prepare(
+            "UPDATE ai_suite_runs SET status='infrastructure_error',result=?,finished_at=? WHERE id=? AND org_id=? AND status='running'",
+          )
+          .run(
+            JSON.stringify({ code: "WORKER_ERROR" }),
+            new Date().toISOString(),
+            job.id,
+            job.org_id,
+          );
+        store.db
+          .prepare("UPDATE jobs SET status='done' WHERE id=? AND lease_token=?")
+          .run(job.id, job.lease_token);
       });
     else if (job.kind === "locator_check")
       store.finishLocatorCheck(

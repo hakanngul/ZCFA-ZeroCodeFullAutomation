@@ -46,6 +46,8 @@ import {
 
 import { api } from "./lib/api";
 import { ElementRegistry } from "./components/element-registry";
+import { AiAssistant } from "./components/ai-assistant";
+import { AiSuiteList } from "./components/ai-suite-list";
 
 type Scan = {
   id: string;
@@ -70,10 +72,13 @@ type ProjectData = {
   model: AppModel | null;
   scans: Scan[];
   tests: CanonicalTest[];
+  aiSuiteCount: number;
+  aiRunCounts: { total: number; passed: number; pending: number };
   runs: RunSummary[];
   audit: { action: string; object_id: string; created_at: string }[];
 };
-type Section = "overview" | "model" | "elements" | "tests" | "runs";
+type Section =
+  "overview" | "model" | "elements" | "tests" | "runs" | "assistant";
 const labels: Record<string, string> = {
   queued: "Sırada",
   running: "Çalışıyor",
@@ -274,10 +279,11 @@ export default function Workspace() {
     });
   const latestScan = data?.scans[0];
   const successful =
-    data?.runs.filter((r) => r.status === "passed").length ?? 0;
+    (data?.runs.filter((r) => r.status === "passed").length ?? 0) +
+    (data?.aiRunCounts.passed ?? 0);
   const pending =
-    data?.runs.filter((r) => ["queued", "running"].includes(r.status)).length ??
-    0;
+    (data?.runs.filter((r) => ["queued", "running"].includes(r.status))
+      .length ?? 0) + (data?.aiRunCounts.pending ?? 0);
   const navigation: {
     id: Section;
     title: string;
@@ -285,6 +291,7 @@ export default function Workspace() {
     count?: number;
   }[] = [
     { id: "overview", title: "Genel bakış", icon: LayoutDashboard },
+    { id: "assistant", title: "AI Test Assistant", icon: Sparkles },
     {
       id: "model",
       title: "Uygulama modeli",
@@ -301,7 +308,7 @@ export default function Workspace() {
       id: "tests",
       title: "Testler",
       icon: FlaskConical,
-      count: data?.tests.length,
+      count: data ? data.tests.length + data.aiSuiteCount : undefined,
     },
     {
       id: "runs",
@@ -632,6 +639,7 @@ export default function Workspace() {
                 {
                   {
                     overview: "Her testin arkasında bir kanıt.",
+                    assistant: "AI Test Assistant",
                     model: "Uygulama modeli",
                     elements: "Elementler",
                     tests: "Test çalışma alanı",
@@ -644,6 +652,8 @@ export default function Workspace() {
                   {
                     overview:
                       "İş niyetini tanımla, uygulama bilgisini paylaş ve sonucu güvenle incele.",
+                    assistant:
+                      "İzinli hedefi incele, senaryoları gözden geçir ve suite çalıştır.",
                     model:
                       "Keşif önerilerini incele. Onayladığın öğeler sürümlü modelin parçası olsun.",
                     tests:
@@ -655,17 +665,19 @@ export default function Workspace() {
                 }
               </p>
             </div>
-            {section !== "model" && section !== "elements" && (
-              <button
-                className="primary"
-                onClick={() => {
-                  setPublished(null);
-                  setSection("tests");
-                }}
-              >
-                <Plus size={16} /> Yeni test
-              </button>
-            )}
+            {section !== "model" &&
+              section !== "elements" &&
+              section !== "assistant" && (
+                <button
+                  className="primary"
+                  onClick={() => {
+                    setPublished(null);
+                    setSection("tests");
+                  }}
+                >
+                  <Plus size={16} /> Yeni test
+                </button>
+              )}
           </div>
           {error && (
             <div className="error-banner" role="alert">
@@ -678,9 +690,16 @@ export default function Workspace() {
           )}
           <div className="prototype-banner">
             <FlaskConical size={16} />
-            <span>Geliştirme sürümü</span> Yalnız yerel Demo Bank üzerinde
-            çalışır. Sonuçlar gerçek Playwright yürütmesinden gelir.
+            <span>Geliştirme sürümü</span> Klasik testler yerel Demo Bank
+            üzerinde çalışır; AI suite’ler yalnız yapılandırılmış izinli
+            hedeflere gider.
           </div>
+          {section === "assistant" && (
+            <AiAssistant
+              projectId={projectId}
+              canEdit={actor.role !== "viewer"}
+            />
+          )}
           {section === "overview" && (
             <>
               <div className="hero">
@@ -751,7 +770,7 @@ export default function Workspace() {
                   },
                   {
                     label: "Yayınlanan test",
-                    value: data?.tests.length ?? 0,
+                    value: data ? data.tests.length + data.aiSuiteCount : 0,
                     icon: FileCheck2,
                     note: "Açık doğrulama içeren",
                   },
@@ -1014,83 +1033,92 @@ export default function Workspace() {
             />
           )}
           {section === "tests" && (
-            <div className="designer-grid">
-              <section className="card editor-card">{editor}</section>
-              <aside className="test-side">
-                <section className="card">
-                  <div className="card-heading">
-                    <h2>Çalıştırma ortamı</h2>
-                    <Play size={16} />
-                  </div>
-                  <label className="field">
-                    Demo kontrolü
-                    <select
-                      value={variant}
-                      onChange={(e) => setVariant(e.target.value as Variant)}
-                    >
-                      {Object.entries(variantLabels).map(([id, name]) => (
-                        <option key={id} value={id}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <p className="hint">
-                    Olumsuz kontroller, gerçek uygulama hatalarının PASS olarak
-                    görünmediğini sınar.
-                  </p>
-                  <div className="runtime-detail">
-                    <span>Tarayıcı</span>
-                    <strong>Chromium</strong>
-                  </div>
-                  <div className="runtime-detail">
-                    <span>Yürütme</span>
-                    <strong>Ayrı worker</strong>
-                  </div>
-                  <div className="runtime-detail">
-                    <span>Kanıt</span>
-                    <strong>Ekran görüntüsü</strong>
-                  </div>
-                </section>
-                <section className="card">
-                  <div className="card-heading">
-                    <h2>Yayınlanan testler</h2>
-                    <span className="small-tag">{data?.tests.length ?? 0}</span>
-                  </div>
-                  {data?.tests.length ? (
-                    data.tests.map((test) => (
-                      <button
-                        className={`test-item ${published?.testId === test.testId ? "selected-test" : ""}`}
-                        key={`${test.testId}:${test.revision}`}
-                        onClick={() => setPublished(test)}
+            <>
+              <AiSuiteList
+                projectId={projectId}
+                canEdit={actor.role !== "viewer"}
+                onOpen={() => setSection("assistant")}
+              />
+              <div className="designer-grid">
+                <section className="card editor-card">{editor}</section>
+                <aside className="test-side">
+                  <section className="card">
+                    <div className="card-heading">
+                      <h2>Çalıştırma ortamı</h2>
+                      <Play size={16} />
+                    </div>
+                    <label className="field">
+                      Demo kontrolü
+                      <select
+                        value={variant}
+                        onChange={(e) => setVariant(e.target.value as Variant)}
                       >
-                        <FileCheck2 size={18} />
-                        <span>
-                          <strong>{test.title}</strong>
-                          <small>
-                            Test v{test.revision} · Model v
-                            {test.appModelRef.revision}
-                          </small>
-                        </span>
-                        <ChevronRight size={15} />
-                      </button>
-                    ))
-                  ) : (
+                        {Object.entries(variantLabels).map(([id, name]) => (
+                          <option key={id} value={id}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <p className="hint">
-                      İlk testini yayınladığında burada görünecek.
+                      Olumsuz kontroller, gerçek uygulama hatalarının PASS
+                      olarak görünmediğini sınar.
                     </p>
-                  )}
-                  {published && (
-                    <button
-                      className="text-button"
-                      onClick={() => setPublished(null)}
-                    >
-                      <Plus size={14} /> Yeni taslak oluştur
-                    </button>
-                  )}
-                </section>
-              </aside>
-            </div>
+                    <div className="runtime-detail">
+                      <span>Tarayıcı</span>
+                      <strong>Chromium</strong>
+                    </div>
+                    <div className="runtime-detail">
+                      <span>Yürütme</span>
+                      <strong>Ayrı worker</strong>
+                    </div>
+                    <div className="runtime-detail">
+                      <span>Kanıt</span>
+                      <strong>Ekran görüntüsü</strong>
+                    </div>
+                  </section>
+                  <section className="card">
+                    <div className="card-heading">
+                      <h2>Klasik yayınlanan testler</h2>
+                      <span className="small-tag">
+                        {data?.tests.length ?? 0}
+                      </span>
+                    </div>
+                    {data?.tests.length ? (
+                      data.tests.map((test) => (
+                        <button
+                          className={`test-item ${published?.testId === test.testId ? "selected-test" : ""}`}
+                          key={`${test.testId}:${test.revision}`}
+                          onClick={() => setPublished(test)}
+                        >
+                          <FileCheck2 size={18} />
+                          <span>
+                            <strong>{test.title}</strong>
+                            <small>
+                              Test v{test.revision} · Model v
+                              {test.appModelRef.revision}
+                            </small>
+                          </span>
+                          <ChevronRight size={15} />
+                        </button>
+                      ))
+                    ) : (
+                      <p className="hint">
+                        İlk testini yayınladığında burada görünecek.
+                      </p>
+                    )}
+                    {published && (
+                      <button
+                        className="text-button"
+                        onClick={() => setPublished(null)}
+                      >
+                        <Plus size={14} /> Yeni taslak oluştur
+                      </button>
+                    )}
+                  </section>
+                </aside>
+              </div>
+            </>
           )}
           {section === "runs" && (
             <>

@@ -1,0 +1,665 @@
+"use client";
+import { useCallback, useEffect, useState } from "react";
+import {
+  Bot,
+  Plus,
+  Send,
+  Settings2,
+  Play,
+  Check,
+  Trash2,
+  RefreshCw,
+} from "lucide-react";
+import { api } from "../lib/api";
+import type { AiSuite } from "../../../../packages/assistant/src/spec";
+import "../assistant.css";
+
+type Provider = {
+  id: string;
+  name: string;
+  kind: string;
+  baseUrl: string;
+  model: string;
+  timeoutMs: number;
+  active: boolean;
+  hasKey: boolean;
+};
+type Conversation = { id: string; title: string; created_at: string };
+type Message = { id: string; role: string; content: string };
+type Draft = {
+  id: string;
+  status: string;
+  error_code: string | null;
+  target_url: string;
+  inspection: { title: string; elements: unknown[] } | null;
+  definition: AiSuite | null;
+};
+type Suite = { id: string; definition: AiSuite };
+type Run = {
+  id: string;
+  status: string;
+  result: {
+    counts: { passed: number; failed: number; skipped: number };
+    results: {
+      title: string;
+      status: string;
+      code?: string;
+      steps: { kind: string; status: string; code?: string }[];
+      screenshot?: { filename: string; sha256: string };
+    }[];
+  } | null;
+};
+const initial = {
+  name: "",
+  kind: "openai-compatible",
+  baseUrl: "",
+  apiKey: "",
+  model: "",
+  timeoutMs: 15000,
+};
+export function AiAssistant({
+  projectId,
+  canEdit,
+}: {
+  projectId: string;
+  canEdit: boolean;
+}) {
+  const root = `/v1/projects/${projectId}/ai`;
+  const [providers, setProviders] = useState<Provider[]>([]),
+    [conversations, setConversations] = useState<Conversation[]>([]),
+    [suites, setSuites] = useState<Suite[]>([]);
+  const [conversationId, setConversationId] = useState(""),
+    [messages, setMessages] = useState<Message[]>([]),
+    [drafts, setDrafts] = useState<Draft[]>([]);
+  const [settings, setSettings] = useState(false),
+    [form, setForm] = useState(initial),
+    [editing, setEditing] = useState(""),
+    [models, setModels] = useState<string[]>([]);
+  const [prompt, setPrompt] = useState(""),
+    [targetUrl, setTargetUrl] = useState("http://127.0.0.1:4100/login"),
+    [providerId, setProviderId] = useState(""),
+    [model, setModel] = useState("");
+  const [editingDraft, setEditingDraft] = useState(""),
+    [suiteJson, setSuiteJson] = useState(""),
+    [run, setRun] = useState<Run | null>(null);
+  const [busy, setBusy] = useState(false),
+    [notice, setNotice] = useState(""),
+    [error, setError] = useState("");
+  const loadLists = useCallback(async () => {
+    const [p, c, s] = await Promise.all([
+      api<{ providers: Provider[] }>("/v1/ai/providers"),
+      api<{ conversations: Conversation[] }>(`${root}/conversations`),
+      api<{ suites: Suite[] }>(`${root}/suites`),
+    ]);
+    setProviders(p.providers);
+    setConversations(c.conversations);
+    setSuites(s.suites);
+    setProviderId((current) =>
+      current && p.providers.some((x) => x.id === current && x.active)
+        ? current
+        : (p.providers.find((x) => x.active)?.id ?? ""),
+    );
+  }, [root]);
+  const loadConversation = useCallback(
+    async (id: string) => {
+      const data = await api<{
+        messages: Message[];
+        drafts: Draft[];
+        runs: Run[];
+      }>(`${root}/conversations/${id}`);
+      setConversationId(id);
+      setMessages(data.messages);
+      setDrafts(data.drafts);
+      setRun(data.runs[0] ?? null);
+    },
+    [root],
+  );
+  useEffect(() => {
+    void loadLists().catch((e) => setError(String(e)));
+  }, [loadLists]);
+  useEffect(() => {
+    if (!conversationId) return;
+    const interval = setInterval(() => {
+      void loadConversation(conversationId).catch(() => {});
+    }, 1500);
+    return () => clearInterval(interval);
+  }, [conversationId, loadConversation]);
+  useEffect(() => {
+    if (!run || !["queued", "running"].includes(run.status)) return;
+    const interval = setInterval(() => {
+      void api<Run>(`${root}/runs/${run.id}`)
+        .then(setRun)
+        .catch(() => {});
+    }, 1200);
+    return () => clearInterval(interval);
+  }, [run, root]);
+  useEffect(() => {
+    const selected = providers.find((p) => p.id === providerId);
+    if (selected) setModel(selected.model);
+  }, [providerId, providers]);
+  async function task(fn: () => Promise<void>) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await fn();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  function editProvider(p: Provider) {
+    setEditing(p.id);
+    setForm({
+      name: p.name,
+      kind: p.kind,
+      baseUrl: p.baseUrl,
+      apiKey: "",
+      model: p.model,
+      timeoutMs: p.timeoutMs,
+    });
+    setModels([]);
+    setSettings(true);
+  }
+  async function send() {
+    await task(async () => {
+      const promptUrl = prompt
+        .match(/https?:\/\/[^\s<>"']+/i)?.[0]
+        .replace(/[),.;!?]+$/g, "");
+      const selectedTarget = promptUrl ?? targetUrl;
+      const response = await api<{ conversationId: string }>(
+        `${root}/messages`,
+        "POST",
+        {
+          conversationId: conversationId || undefined,
+          prompt,
+          targetUrl: selectedTarget,
+          providerId,
+          model,
+        },
+      );
+      setTargetUrl(selectedTarget);
+      setPrompt("");
+      await loadLists();
+      await loadConversation(response.conversationId);
+    });
+  }
+  async function saveDraft(id: string) {
+    await task(async () => {
+      const suite = JSON.parse(suiteJson) as AiSuite;
+      await api(`${root}/drafts/${id}/save`, "POST", suite);
+      setEditingDraft("");
+      await loadLists();
+      setNotice(
+        "Suite kaydedildi. Testler ekranındaki AI suite listesinde de görünecek.",
+      );
+    });
+  }
+  async function startRun(id: string) {
+    await task(async () => {
+      const result = await api<{ id: string }>(
+        `${root}/suites/${id}/runs`,
+        "POST",
+        {},
+      );
+      setRun({ id: result.id, status: "queued", result: null });
+    });
+  }
+  async function revise(id: string) {
+    await task(async () => {
+      const response = await api<{ draftId: string; conversationId: string }>(
+        `${root}/suites/${id}/revise`,
+        "POST",
+        {},
+      );
+      await loadConversation(response.conversationId);
+      const updated = await api<{ drafts: Draft[] }>(
+        `${root}/conversations/${response.conversationId}`,
+      );
+      const draft = updated.drafts.find((d) => d.id === response.draftId);
+      if (draft?.definition) {
+        setEditingDraft(draft.id);
+        setSuiteJson(JSON.stringify(draft.definition, null, 2));
+      }
+    });
+  }
+  const selected = providers.find((p) => p.id === providerId);
+  return (
+    <div className="ai-layout">
+      <aside className="ai-history card">
+        <button
+          className="primary"
+          onClick={() => {
+            setConversationId("");
+            setMessages([]);
+            setDrafts([]);
+            setRun(null);
+          }}
+        >
+          <Plus size={16} /> Yeni konuşma
+        </button>
+        <span className="eyebrow">KONUŞMALAR</span>
+        {conversations.map((c) => (
+          <button
+            key={c.id}
+            className={conversationId === c.id ? "selected" : ""}
+            onClick={() => void task(() => loadConversation(c.id))}
+          >
+            {c.title}
+          </button>
+        ))}
+      </aside>
+      <section className="ai-chat card">
+        <div className="ai-chat-head">
+          <div>
+            <span className="eyebrow">AI TEST ASSISTANT</span>
+            <h2>Testleri birlikte oluştur</h2>
+            <p>
+              İzinli sayfayı Chromium ile incele, senaryoları gözden geçir ve
+              çalıştır.
+            </p>
+          </div>
+          <button className="secondary" onClick={() => setSettings(true)}>
+            <Settings2 size={16} /> AI Settings
+          </button>
+        </div>
+        <div className="ai-provider-row">
+          <label>
+            Provider
+            <select
+              aria-label="Aktif provider"
+              value={providerId}
+              onChange={(e) => setProviderId(e.target.value)}
+            >
+              {providers
+                .filter((p) => p.active)
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label>
+            Model
+            <input
+              aria-label="Chat modeli"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+            />
+          </label>
+        </div>
+        <div className="ai-thread" aria-live="polite">
+          {!messages.length && (
+            <div className="ai-empty">
+              <Bot size={32} />
+              <h3>Bir hedef ve test isteği yaz</h3>
+              <p>
+                Örnek: Giriş formunu incele; boş alan ve yanlış bilgi
+                senaryoları hazırla.
+              </p>
+            </div>
+          )}
+          {messages.map((m) => (
+            <div key={m.id} className={`ai-message ${m.role}`}>
+              <strong>{m.role === "user" ? "Sen" : "AI Assistant"}</strong>
+              <p>{m.content}</p>
+            </div>
+          ))}
+          {drafts.map((d) => (
+            <div className="ai-draft" key={d.id}>
+              <strong>
+                {d.status === "ready"
+                  ? "Senaryo taslağı"
+                  : d.status === "failed"
+                    ? "Analiz başarısız"
+                    : "Sayfa inceleniyor…"}
+              </strong>
+              {d.error_code && <p>{d.error_code}</p>}
+              {d.inspection && (
+                <p>
+                  {d.inspection.title} · {d.inspection.elements.length} DOM
+                  öğesi
+                </p>
+              )}
+              {d.definition && (
+                <>
+                  <h3>{d.definition.title}</h3>
+                  {d.definition.scenarios.map((s, i) => (
+                    <p key={i}>
+                      {s.category} · {s.title} · {s.actions.length} adım
+                    </p>
+                  ))}
+                  {editingDraft === d.id ? (
+                    <>
+                      <label>
+                        Kaydetmeden önce suite JSON’unu düzenle
+                        <textarea
+                          aria-label="Suite taslağı"
+                          rows={15}
+                          value={suiteJson}
+                          onChange={(e) => setSuiteJson(e.target.value)}
+                        />
+                      </label>
+                      <button
+                        className="primary"
+                        disabled={busy || !canEdit}
+                        onClick={() => void saveDraft(d.id)}
+                      >
+                        <Check size={15} /> Onayla ve kaydet
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className="secondary"
+                      onClick={() => {
+                        setEditingDraft(d.id);
+                        setSuiteJson(JSON.stringify(d.definition, null, 2));
+                      }}
+                    >
+                      Taslağı düzenle
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          ))}
+          {run && (
+            <div className="ai-run">
+              <strong>Suite çalışması · {run.status}</strong>
+              {run.result?.counts && (
+                <p>
+                  {run.result.counts.passed} başarılı ·{" "}
+                  {run.result.counts.failed} başarısız ·{" "}
+                  {run.result.counts.skipped} atlandı
+                </p>
+              )}
+              {run.result?.results?.map((r, i) => (
+                <div key={i}>
+                  <strong>
+                    {r.title}: {r.status}
+                  </strong>
+                  {r.code && <p>Hata: {r.code}</p>}
+                  {r.steps.map((step, n) => (
+                    <p key={n}>
+                      {step.kind}: {step.status} {step.code ?? ""}
+                    </p>
+                  ))}
+                  {r.screenshot && (
+                    <a
+                      target="_blank"
+                      rel="noreferrer"
+                      href={`/api${root}/runs/${run.id}/screenshots/${i}`}
+                    >
+                      Ekran görüntüsü
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        {suites.length > 0 && (
+          <div className="ai-suites">
+            <strong>Kaydedilen suite’ler</strong>
+            {suites.map((s) => (
+              <div key={s.id}>
+                <span>
+                  {s.definition.title} · {s.definition.scenarios.length} senaryo
+                </span>
+                <button
+                  className="secondary"
+                  disabled={busy || !canEdit}
+                  onClick={() => void startRun(s.id)}
+                >
+                  <Play size={14} /> Çalıştır
+                </button>
+                <button
+                  className="secondary"
+                  disabled={busy || !canEdit}
+                  onClick={() => void revise(s.id)}
+                >
+                  Yeni taslak olarak düzelt
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {error && (
+          <p role="alert" className="error">
+            {error}
+          </p>
+        )}
+        {notice && <p role="status">{notice}</p>}
+        <div className="ai-composer">
+          <label>
+            Yetkili hedef URL
+            <input
+              aria-label="Hedef URL"
+              value={targetUrl}
+              onChange={(e) => setTargetUrl(e.target.value)}
+            />
+          </label>
+          <textarea
+            aria-label="Test isteği"
+            rows={3}
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Örnek: Login sayfasını analiz et; pozitif, negatif ve sınır senaryolarını hazırla."
+          />
+          <button
+            className="primary"
+            disabled={
+              busy ||
+              !canEdit ||
+              !providerId ||
+              !model ||
+              prompt.trim().length < 10
+            }
+            onClick={() => void send()}
+          >
+            <Send size={16} /> Gönder
+          </button>
+        </div>
+      </section>
+      {settings && (
+        <div className="ai-modal-backdrop" role="presentation">
+          <div
+            className="ai-modal card"
+            role="dialog"
+            aria-modal="true"
+            aria-label="AI Settings"
+          >
+            <div className="ai-chat-head">
+              <h2>AI Settings</h2>
+              <button className="secondary" onClick={() => setSettings(false)}>
+                Kapat
+              </button>
+            </div>
+            <p>
+              OpenAI-compatible provider · API anahtarı yalnız sunucuda şifreli
+              saklanır.
+            </p>
+            <div className="ai-settings-grid">
+              <label>
+                Provider adı
+                <input
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                />
+              </label>
+              <label>
+                Provider tipi
+                <select
+                  value={form.kind}
+                  onChange={(e) => setForm({ ...form, kind: e.target.value })}
+                >
+                  <option value="openai-compatible">OpenAI-compatible</option>
+                </select>
+              </label>
+              <label>
+                Custom Base URL
+                <input
+                  placeholder="https://api.example.com/v1"
+                  value={form.baseUrl}
+                  onChange={(e) =>
+                    setForm({ ...form, baseUrl: e.target.value })
+                  }
+                />
+              </label>
+              <label>
+                API Key
+                <input
+                  type="password"
+                  autoComplete="off"
+                  placeholder={
+                    editing ? "Değiştirmiyorsan boş bırak" : "API Key"
+                  }
+                  value={form.apiKey}
+                  onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
+                />
+              </label>
+              <label>
+                Model
+                {models.length ? (
+                  <select
+                    value={form.model}
+                    onChange={(e) =>
+                      setForm({ ...form, model: e.target.value })
+                    }
+                  >
+                    <option value="">Model seç</option>
+                    {models.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value={form.model}
+                    onChange={(e) =>
+                      setForm({ ...form, model: e.target.value })
+                    }
+                    placeholder="Manuel model ID"
+                  />
+                )}
+              </label>
+              <label>
+                Timeout (ms)
+                <input
+                  type="number"
+                  min={1000}
+                  max={30000}
+                  value={form.timeoutMs}
+                  onChange={(e) =>
+                    setForm({ ...form, timeoutMs: Number(e.target.value) })
+                  }
+                />
+              </label>
+            </div>
+            <div className="ai-actions">
+              <button
+                className="secondary"
+                disabled={busy || !form.apiKey}
+                onClick={() =>
+                  void task(async () => {
+                    await api("/v1/ai/providers/connection", "POST", form);
+                    setNotice("Gerçek provider bağlantısı başarılı.");
+                  })
+                }
+              >
+                <RefreshCw size={15} /> Test Connection
+              </button>
+              <button
+                className="secondary"
+                disabled={busy || !form.apiKey}
+                onClick={() =>
+                  void task(async () => {
+                    const data = await api<{ models: string[] }>(
+                      "/v1/ai/providers/models",
+                      "POST",
+                      form,
+                    );
+                    setModels(data.models);
+                    setNotice(
+                      data.models.length
+                        ? `${data.models.length} model yüklendi.`
+                        : "Model listesi boş; ID’yi elle girebilirsin.",
+                    );
+                  })
+                }
+              >
+                Fetch Models
+              </button>
+              <button
+                className="primary"
+                disabled={busy || !canEdit || (!editing && !form.apiKey)}
+                onClick={() =>
+                  void task(async () => {
+                    await api(
+                      `/v1/ai/providers${editing ? `/${editing}` : ""}`,
+                      editing ? "PUT" : "POST",
+                      form,
+                    );
+                    setForm(initial);
+                    setEditing("");
+                    await loadLists();
+                    setNotice("Provider kaydedildi.");
+                  })
+                }
+              >
+                Save Provider
+              </button>
+            </div>
+            <h3>Kayıtlı provider’lar</h3>
+            {providers.map((p) => (
+              <div className="ai-provider-item" key={p.id}>
+                <span>
+                  {p.name} · {p.model} {p.active && "· Aktif"}
+                </span>
+                <button onClick={() => editProvider(p)}>Düzenle</button>
+                {!p.active && (
+                  <button
+                    disabled={busy}
+                    onClick={() =>
+                      void task(async () => {
+                        await api(
+                          `/v1/ai/providers/${p.id}/activate`,
+                          "POST",
+                          {},
+                        );
+                        await loadLists();
+                      })
+                    }
+                  >
+                    Aktif yap
+                  </button>
+                )}
+                <button
+                  aria-label={`${p.name} sil`}
+                  disabled={busy}
+                  onClick={() =>
+                    void task(async () => {
+                      await api(`/v1/ai/providers/${p.id}`, "DELETE");
+                      await loadLists();
+                    })
+                  }
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ))}
+            {error && (
+              <p role="alert" className="error">
+                {error}
+              </p>
+            )}
+            {notice && <p role="status">{notice}</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
