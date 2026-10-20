@@ -138,7 +138,7 @@ test(
         .getByRole("button", { name: /Yerel çalışma alanını aç/ })
         .click();
       await page.getByRole("button", { name: "Ayarlar", exact: true }).click();
-      const settings = page.locator(".ai-settings-card");
+      const settings = page.locator(".ai-settings-card").last();
       await settings
         .getByRole("textbox", { name: "Provider adı" })
         .fill("Yerel test provider");
@@ -159,6 +159,11 @@ test(
         .waitFor();
       await settings.getByRole("button", { name: "Save Provider" }).click();
       await settings.getByText("Provider kaydedildi.").waitFor();
+      await page
+        .getByRole("textbox", { name: "Hedef site URL" })
+        .fill("https://www.saucedemo.com/");
+      await page.getByRole("button", { name: "Site ekle" }).click();
+      await page.getByText("https://www.saucedemo.com").waitFor();
       await page.screenshot({
         path: join(evidence, "settings.png"),
         fullPage: true,

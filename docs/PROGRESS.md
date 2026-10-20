@@ -1,5 +1,13 @@
 # Devam noktası — 19 Ekim 2026
 
+## 20 Ekim 2026 — Ayarlar'da yetkili hedef listesi
+
+Harici test hedefleri Ayarlar'da HTTPS site listesi olarak eklenip siliniyor.
+Migration 004 ile org kapsamında saklanıyor; API ve worker her işte güncel
+listeyi okuduğu için yeniden başlatma gerekmiyor. Worker harici hedefin DNS
+adresini tarayıcı açmadan önce denetliyor; tarayıcı istekleri hedef origin'e
+kısıtlı kalıyor. Yerel demo origin'i varsayılan olarak yetkili.
+
 ## 20 Ekim 2026 — Yerel arayüz 5000 portunda
 
 3000 portu kullanıcının ortamında dolu olduğu için `pnpm dev` web arayüzünü

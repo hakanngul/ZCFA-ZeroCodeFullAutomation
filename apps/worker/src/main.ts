@@ -9,6 +9,7 @@ import {
 import { DomainError, locatorSchema } from "../../../packages/domain/src/index";
 import {
   authorizedTarget,
+  checkTargetNetwork,
   inspect,
   generateSuite,
   executeSuite,
@@ -83,7 +84,11 @@ while (!stopping) {
         .get(draft.provider_id as string, job.org_id) as Provider | undefined;
       if (!provider)
         throw new DomainError("PROVIDER_MISSING", "Provider silinmiş.");
-      const target = authorizedTarget(draft.target_url as string);
+      const target = authorizedTarget(
+        draft.target_url as string,
+        store.authorizedOrigins(job.org_id),
+      );
+      await checkTargetNetwork(target);
       const inspection = await inspect(browser, target);
       const suite = await generateSuite(
         provider,
@@ -134,6 +139,7 @@ while (!stopping) {
         browser,
         aiSuiteSchema.parse(JSON.parse(row.definition as string)),
         resolve(localDir, "artifacts", job.id),
+        store.authorizedOrigins(job.org_id),
       );
       let advice: string | undefined;
       if (result.status === "failed") {

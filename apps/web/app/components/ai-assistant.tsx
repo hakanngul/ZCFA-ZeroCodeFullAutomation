@@ -15,6 +15,7 @@ type Provider = {
   active: boolean;
   hasKey: boolean;
 };
+type AuthorizedOrigin = { id: string; origin: string; createdAt: string };
 type Conversation = { id: string; title: string; created_at: string };
 type Message = { id: string; role: string; content: string };
 type Draft = {
@@ -59,12 +60,16 @@ export function AiAssistant({
 }) {
   const root = `/v1/projects/${projectId}/ai`;
   const [providers, setProviders] = useState<Provider[]>([]),
+    [authorizedOrigins, setAuthorizedOrigins] = useState<AuthorizedOrigin[]>(
+      [],
+    ),
     [conversations, setConversations] = useState<Conversation[]>([]),
     [suites, setSuites] = useState<Suite[]>([]);
   const [conversationId, setConversationId] = useState(""),
     [messages, setMessages] = useState<Message[]>([]),
     [drafts, setDrafts] = useState<Draft[]>([]);
   const [form, setForm] = useState(initial),
+    [originInput, setOriginInput] = useState(""),
     [editing, setEditing] = useState(""),
     [models, setModels] = useState<string[]>([]);
   const [prompt, setPrompt] = useState(""),
@@ -78,12 +83,14 @@ export function AiAssistant({
     [notice, setNotice] = useState(""),
     [error, setError] = useState("");
   const loadLists = useCallback(async () => {
-    const [p, c, s] = await Promise.all([
+    const [p, c, s, o] = await Promise.all([
       api<{ providers: Provider[] }>("/v1/ai/providers"),
       api<{ conversations: Conversation[] }>(`${root}/conversations`),
       api<{ suites: Suite[] }>(`${root}/suites`),
+      api<{ origins: AuthorizedOrigin[] }>("/v1/ai/authorized-origins"),
     ]);
     setProviders(p.providers);
+    setAuthorizedOrigins(o.origins);
     setConversations(c.conversations);
     setSuites(s.suites);
     setProviderId((current) =>
@@ -464,6 +471,62 @@ export function AiAssistant({
       )}
       {mode === "settings" && (
         <div className="ai-settings-page">
+          <div className="ai-settings-card card">
+            <div>
+              <span className="eyebrow">YETKİLİ HEDEFLER</span>
+              <h2>Test edilecek siteler</h2>
+            </div>
+            <p>
+              Bir sitenin HTTPS adresini ekle. Aynı origin altındaki sayfalar
+              chat ve suite çalıştırmalarında hemen kullanılabilir.
+            </p>
+            <div className="ai-origin-entry">
+              <input
+                aria-label="Hedef site URL"
+                placeholder="https://www.saucedemo.com/"
+                value={originInput}
+                onChange={(e) => setOriginInput(e.target.value)}
+              />
+              <button
+                className="primary"
+                disabled={busy || !canEdit || !originInput.trim()}
+                onClick={() =>
+                  void task(async () => {
+                    await api("/v1/ai/authorized-origins", "POST", {
+                      url: originInput.trim(),
+                    });
+                    setOriginInput("");
+                    await loadLists();
+                    setNotice("Hedef site eklendi; yeniden başlatma gerekmez.");
+                  })
+                }
+              >
+                <Plus size={15} /> Site ekle
+              </button>
+            </div>
+            <p>Yerel demo: http://127.0.0.1:4100</p>
+            {authorizedOrigins.map((site) => (
+              <div className="ai-provider-item" key={site.id}>
+                <span>{site.origin}</span>
+                <button
+                  aria-label={`${site.origin} sil`}
+                  disabled={busy || !canEdit}
+                  onClick={() =>
+                    void task(async () => {
+                      await api(
+                        `/v1/ai/authorized-origins/${site.id}`,
+                        "DELETE",
+                      );
+                      await loadLists();
+                      setNotice("Hedef site kaldırıldı.");
+                    })
+                  }
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
           <div className="ai-settings-card card">
             <div className="ai-chat-head">
               <div>

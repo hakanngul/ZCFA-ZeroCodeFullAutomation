@@ -664,7 +664,7 @@ export default function Workspace() {
                     assistant:
                       "İzinli hedefi incele, senaryoları gözden geçir ve suite çalıştır.",
                     settings:
-                      "AI sağlayıcılarını, modelleri ve bağlantı ayarlarını yönet.",
+                      "Test hedeflerini, AI sağlayıcılarını ve modelleri yönet.",
                     model:
                       "Keşif önerilerini incele. Onayladığın öğeler sürümlü modelin parçası olsun.",
                     tests:

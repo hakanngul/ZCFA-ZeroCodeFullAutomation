@@ -72,12 +72,28 @@ export class Store {
         "utf8",
       ),
     );
+    this.db.exec(
+      readFileSync(
+        new URL(
+          "../../../infra/migrations/004_authorized_targets.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
     this.db
       .prepare("INSERT OR IGNORE INTO projects VALUES (?,?,?)")
       .run(demoProject, demoOrg, "ZeroCode Demo");
   }
   close() {
     this.db.close();
+  }
+  authorizedOrigins(orgId: string): string[] {
+    return (
+      this.db
+        .prepare("SELECT origin FROM ai_authorized_origins WHERE org_id=?")
+        .all(orgId) as { origin: string }[]
+    ).map((row) => row.origin);
   }
   transaction<T>(fn: () => T): T {
     this.db.exec("BEGIN IMMEDIATE");

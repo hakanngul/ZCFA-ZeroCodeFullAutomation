@@ -69,6 +69,8 @@ uygulamayı açtığı anlamına gelmez: deneme canlı yerel demo hedefinde yap�
 | POST       | /v1/ai/providers/:id/activate                          | Aktif provider seç                                 |
 | POST       | /v1/ai/providers/connection                            | Gerçek chat completion bağlantı testi              |
 | POST       | /v1/ai/providers/models                                | Gerçek model listesi                               |
+| GET/POST   | /v1/ai/authorized-origins                              | Yetkili HTTPS hedefleri listele / ekle             |
+| DELETE     | /v1/ai/authorized-origins/:id                          | Yetkili hedefi kaldır                              |
 | GET        | /v1/projects/:projectId/ai/conversations               | Konuşma geçmişi                                    |
 | GET        | /v1/projects/:projectId/ai/conversations/:id           | Mesaj, taslak ve çalışma geçmişi                   |
 | POST       | /v1/projects/:projectId/ai/messages                    | Prompt → kuyruklu browser incelemesi ve AI taslağı |

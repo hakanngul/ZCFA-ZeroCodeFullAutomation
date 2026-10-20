@@ -3,6 +3,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { z } from "zod";
 import { Store } from "../../../packages/storage/src/index";
 import { DomainError, type Actor } from "../../../packages/domain/src/index";
@@ -15,6 +16,24 @@ import {
 } from "../../../packages/assistant/src/provider";
 
 const idParam = z.object({ id: z.uuid() });
+const targetOriginInput = z.object({ url: z.url().max(1000) }).strict();
+function targetOrigin(raw: string) {
+  const url = new URL(raw);
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.port ||
+    isIP(url.hostname) ||
+    url.hostname === "localhost" ||
+    url.hostname.endsWith(".localhost")
+  )
+    throw new DomainError(
+      "TARGET_BLOCKED",
+      "Yalnız herkese açık HTTPS hedefleri eklenebilir.",
+    );
+  return url.origin;
+}
 const providerInput = z
   .object({
     name: z.string().trim().min(2).max(80),
@@ -117,6 +136,42 @@ export function registerAssistant(
     if (!row) throw new DomainError("NOT_FOUND", "Taslak bulunamadı.", 404);
     return row;
   }
+  app.get("/v1/ai/authorized-origins", async (request) => {
+    const user = actor(request);
+    return {
+      origins: store.db
+        .prepare(
+          "SELECT id,origin,created_at AS createdAt FROM ai_authorized_origins WHERE org_id=? ORDER BY created_at DESC",
+        )
+        .all(user.orgId),
+    };
+  });
+  app.post("/v1/ai/authorized-origins", async (request, reply) => {
+    const user = actor(request, true);
+    const { url } = targetOriginInput.parse(request.body);
+    const origin = targetOrigin(url);
+    const existing = store.db
+      .prepare(
+        "SELECT id,origin FROM ai_authorized_origins WHERE org_id=? AND origin=?",
+      )
+      .get(user.orgId, origin);
+    if (existing) return existing;
+    const id = randomUUID();
+    store.db
+      .prepare("INSERT INTO ai_authorized_origins VALUES (?,?,?,?)")
+      .run(id, user.orgId, origin, new Date().toISOString());
+    return reply.code(201).send({ id, origin });
+  });
+  app.delete("/v1/ai/authorized-origins/:id", async (request) => {
+    const user = actor(request, true);
+    const { id } = idParam.parse(request.params);
+    const result = store.db
+      .prepare("DELETE FROM ai_authorized_origins WHERE id=? AND org_id=?")
+      .run(id, user.orgId);
+    if (!result.changes)
+      throw new DomainError("NOT_FOUND", "Hedef bulunamadı.", 404);
+    return { status: "deleted" };
+  });
   app.get("/v1/ai/providers", async (request) => {
     const user = actor(request);
     return {
@@ -344,7 +399,10 @@ export function registerAssistant(
       new URL(promptUrl).href !== new URL(input.targetUrl).href
     )
       throw new DomainError("TARGET_MISMATCH", "Prompt ve hedef URL farklı.");
-    const target = authorizedTarget(promptUrl ?? input.targetUrl ?? ""),
+    const target = authorizedTarget(
+        promptUrl ?? input.targetUrl ?? "",
+        store.authorizedOrigins(user.orgId),
+      ),
       provider = getProvider(user, input.providerId);
     if (!provider.active)
       throw new DomainError("PROVIDER_INACTIVE", "Aktif provider seçin.");

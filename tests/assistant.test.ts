@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { Store } from "../packages/storage/src/index";
+import { authorizedTarget } from "../packages/assistant/src/agent";
 import { createApp } from "../apps/api/src/app";
 import { demoProject } from "../packages/domain/src/index";
 import { admin } from "./support";
@@ -119,7 +120,10 @@ test(
       const res = await app.inject({
         method,
         url,
-        headers: { ...headers, "content-type": "application/json" },
+        headers:
+          payload === undefined
+            ? headers
+            : { ...headers, "content-type": "application/json" },
         payload: payload === undefined ? undefined : JSON.stringify(payload),
       });
       return { status: res.statusCode, body: res.json() };
@@ -205,6 +209,39 @@ test(
         },
       );
       assert.equal(blockedPrompt.body.code, "TARGET_BLOCKED");
+      const blockedPrivate = await call("POST", "/v1/ai/authorized-origins", {
+        url: "http://127.0.0.1:9999/",
+      });
+      assert.equal(blockedPrivate.body.code, "TARGET_BLOCKED");
+      const site = await call("POST", "/v1/ai/authorized-origins", {
+        url: "https://www.saucedemo.com/inventory.html",
+      });
+      assert.equal(site.status, 201);
+      assert.equal(site.body.origin, "https://www.saucedemo.com");
+      assert.equal(
+        authorizedTarget(
+          "https://www.saucedemo.com/",
+          store.authorizedOrigins(admin.orgId),
+        ).origin,
+        site.body.origin,
+      );
+      assert.equal(
+        (await call("GET", "/v1/ai/authorized-origins")).body.origins.length,
+        1,
+      );
+      assert.equal(
+        (await call("DELETE", `/v1/ai/authorized-origins/${site.body.id}`))
+          .status,
+        200,
+      );
+      assert.throws(
+        () =>
+          authorizedTarget(
+            "https://www.saucedemo.com/",
+            store.authorizedOrigins(admin.orgId),
+          ),
+        { code: "TARGET_BLOCKED" },
+      );
       start("tests/fixtures/server.ts");
       start("apps/worker/src/main.ts");
       await until(

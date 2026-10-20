@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { lookup } from "node:dns/promises";
 import { mkdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Browser } from "playwright";
@@ -7,7 +8,10 @@ import { locate } from "../../runner/src/index";
 import { aiSuiteSchema, type AiSuite } from "./spec";
 import { providerRequest, type Provider } from "./provider";
 
-export function authorizedTarget(raw: string) {
+export function authorizedTarget(
+  raw: string,
+  savedOrigins: Iterable<string> = [],
+) {
   let url: URL;
   try {
     url = new URL(raw);
@@ -27,6 +31,7 @@ export function authorizedTarget(raw: string) {
       .split(",")
       .map((x) => x.trim())
       .filter(Boolean),
+    ...savedOrigins,
   ]);
   if (!allowed.has(url.origin))
     throw new DomainError(
@@ -41,6 +46,24 @@ export function authorizedTarget(raw: string) {
       403,
     );
   return url;
+}
+export async function checkTargetNetwork(target: URL) {
+  if (target.origin === "http://127.0.0.1:4100") return;
+  let addresses: { address: string }[];
+  try {
+    addresses = await lookup(target.hostname, { all: true });
+  } catch {
+    throw new DomainError("TARGET_NETWORK", "Hedef adresi çözümlenemedi.");
+  }
+  if (
+    !addresses.length ||
+    addresses.some(({ address }) =>
+      /^(?:10\.|127\.|192\.168\.|169\.254\.|172\.(?:1[6-9]|2\d|3[01])\.|0\.|::1$|fc|fd|fe80)/i.test(
+        address,
+      ),
+    )
+  )
+    throw new DomainError("TARGET_BLOCKED", "Özel ağ hedefi engellendi.");
 }
 async function contextFor(browser: Browser, target: URL) {
   const context = await browser.newContext({
@@ -209,8 +232,10 @@ export async function executeSuite(
   browser: Browser,
   suite: AiSuite,
   artifactRoot: string,
+  savedOrigins: Iterable<string> = [],
 ) {
-  const target = authorizedTarget(suite.targetUrl);
+  const target = authorizedTarget(suite.targetUrl, savedOrigins);
+  await checkTargetNetwork(target);
   const results: {
     title: string;
     category: string;

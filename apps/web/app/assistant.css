@@ -159,6 +159,17 @@
 .ai-settings-page {
   width: min(900px, 100%);
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.ai-origin-entry {
+  display: flex;
+  gap: 10px;
+}
+.ai-origin-entry input {
+  flex: 1;
+  min-width: 0;
 }
 .ai-settings-card {
   padding: 28px;
@@ -195,6 +206,9 @@
   }
 }
 @media (max-width: 600px) {
+  .ai-origin-entry {
+    flex-direction: column;
+  }
   .ai-suites > div,
   .ai-provider-item {
     flex-wrap: wrap;

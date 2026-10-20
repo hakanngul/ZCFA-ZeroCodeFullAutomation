@@ -106,11 +106,14 @@ suite için modelden hata önerisi istenir; suite yeni taslak olarak düzeltilip
 tekrar onaylanabilir. Kod çalıştırma, otomatik locator değiştirme ve sınırsız
 agent döngüsü yoktur.
 
-Hedef varsayılan olarak yalnız `http://127.0.0.1:4100` demo origin'idir. Ek
-**yetkili** HTTPS origin'leri, API ve worker ortamında virgülle ayrılmış
-`ZC_AUTHORIZED_TARGET_ORIGINS` ile açıkça tanımlanmalıdır. İçerik ve kaynak
-istekleri aynı origin'e kısıtlıdır. Harici hedefin ağ erişimi ayrıca çalıştırma
-ortamının egress politikasına bağlıdır. Provider Base URL'i harici kullanımda
+Hedef varsayılan olarak yalnız `http://127.0.0.1:4100` demo origin'idir.
+Harici HTTPS siteleri **Ayarlar → Test edilecek siteler** listesine ekle; URL
+origin'e indirgenir (`https://www.saucedemo.com/inventory.html` →
+`https://www.saucedemo.com`) ve API ile worker listeyi her işlemde okur.
+Yeniden başlatma gerekmez. Eski `ZC_AUTHORIZED_TARGET_ORIGINS` ortam değişkeni
+de desteklenir. İçerik ve kaynak istekleri aynı origin'e kısıtlıdır. Harici
+hedefin ağ erişimi ayrıca çalıştırma ortamının egress politikasına bağlıdır.
+Provider Base URL'i harici kullanımda
 HTTPS ve public adres ister. Özel geliştirme testinde yerel provider için
 `ZC_AI_ALLOW_LOCAL_PROVIDER=1` kullanılabilir; üretim ayarı değildir.
 
