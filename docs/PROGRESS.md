@@ -1,5 +1,14 @@
 # Devam noktası — 19 Ekim 2026
 
+## 20 Ekim 2026 — Yerel provider verisinin kalıcılığı
+
+Önceki demo komutu her çalıştırmada yeni `/tmp/zerocode-demo.*` dizini
+oluşturuyordu; kullanıcı provider kaydını sonraki açılışta göremedi. Provider
+SQLite'da, AES anahtarı aynı `ZC_DATA_DIR` altındaki `assistant.key` dosyasında
+kalır. Kanıt arşivi yönergesi `.local/demo-data` klasörüne yalnız ilk sefer
+kopyalayacak şekilde düzeltildi. Eski geçici dizin varsa iki dosyayla birlikte
+yeniden kullanılabilir; mevcut veriyi silme/üzerine yazma yapılmamalı.
+
 ## 20 Ekim 2026 — Ayarlar'da yetkili hedef listesi
 
 Harici test hedefleri Ayarlar'da HTTPS site listesi olarak eklenip siliniyor.

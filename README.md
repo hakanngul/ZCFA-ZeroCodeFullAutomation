@@ -89,8 +89,10 @@ ayrı chat ekranından açılır.
 `models` endpoint'ini okur. Model listeleme yoksa model ID elle yazılabilir.
 Birden fazla provider saklanabilir; aktif olan chat'te seçilir. API anahtarı
 tarayıcıya geri dönmez, yerel SQLite'da AES-256-GCM ile şifreli tutulur.
-Şifreleme anahtarı varsayılan olarak ignore edilen `.local/assistant.key` dosyasında
-0600 izinleriyle üretilir; kalıcı ortamlarda 32 bayt base64
+Şifreleme anahtarı SQLite dosyasıyla aynı veri dizinindeki `assistant.key`
+dosyasında 0600 izinleriyle üretilir (varsayılan: `.local/assistant.key`).
+`ZC_DATA_DIR` kullanılıyorsa veritabanı ve anahtar birlikte korunmalıdır.
+Kalıcı ortamlarda 32 bayt base64
 `ZC_AI_ENCRYPTION_KEY` kullanılabilir. Anahtarı kaybetmek kayıtlı provider
 anahtarlarını okunamaz yapar.
 

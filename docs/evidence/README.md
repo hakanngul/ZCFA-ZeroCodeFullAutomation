@@ -25,17 +25,23 @@ anahtarları Git'e dahil edilmedi. Veriler tamamen sentetik Demo Bank verileridi
 Kanıt dosyalarının checksum'ları veritabanındaki kayıtlarla karşılaştırıldı ve
 her iki veritabanı `integrity_check` kontrolünden geçti.
 
-Demo verilerini denemek için mevcut geliştirme servislerini durdurduktan sonra
-değiştirilmemiş arşivi yeni bir çalışma dizinine kopyala:
+Demo verilerini kalıcı olarak denemek için mevcut geliştirme servislerini
+durdurduktan sonra arşivi yalnız **ilk seferde** ignore edilen veri dizinine
+kopyala. Sonraki açılışlarda aynı dizini kullan; burada kaydettiğin provider,
+konuşma ve site listesi bu SQLite dosyasında kalır:
 
 ```sh
-demo_copy=$(mktemp -d /tmp/zerocode-demo.XXXXXX)
-cp -R docs/evidence/demo-data/e2e/. "$demo_copy/"
-ZC_DATA_DIR="$demo_copy" pnpm dev
+mkdir -p .local/demo-data
+if [ ! -f .local/demo-data/zerocode.sqlite ]; then
+  cp -R docs/evidence/demo-data/e2e/. .local/demo-data/
+fi
+ZC_DATA_DIR="$PWD/.local/demo-data" pnpm dev
 ```
 
 Arayüzden yeni yerel oturum aç; önceki test ve çalıştırmalar görünür. Depodaki
-arşiv veritabanını doğrudan canlı veritabanı olarak kullanma.
+arşiv veritabanını doğrudan canlı veritabanı olarak kullanma. Daha önce `mktemp`
+ile başlattıysan kayıtlar o `/tmp/zerocode-demo.*` dizinindedir; hem
+`zerocode.sqlite` hem `assistant.key` dosyasını aynı dizinde tutarak yeniden aç.
 
 Bağımlılıklar (`node_modules`) ve derleme önbelleği (`.next`) taşınabilir ürün
 verisi değildir. Tam sürümleri `pnpm-lock.yaml` ile sabitlenir;
