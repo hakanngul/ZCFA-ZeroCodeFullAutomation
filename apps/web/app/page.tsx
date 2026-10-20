@@ -23,6 +23,7 @@ import {
   Plus,
   Radar,
   ShieldCheck,
+  Settings2,
   Sparkles,
   Square,
   Terminal,
@@ -78,7 +79,13 @@ type ProjectData = {
   audit: { action: string; object_id: string; created_at: string }[];
 };
 type Section =
-  "overview" | "model" | "elements" | "tests" | "runs" | "assistant";
+  | "overview"
+  | "model"
+  | "elements"
+  | "tests"
+  | "runs"
+  | "assistant"
+  | "settings";
 const labels: Record<string, string> = {
   queued: "Sırada",
   running: "Çalışıyor",
@@ -316,6 +323,7 @@ export default function Workspace() {
       icon: Play,
       count: data?.runs.length,
     },
+    { id: "settings", title: "Ayarlar", icon: Settings2 },
   ];
   const editor = (
     <>
@@ -640,6 +648,7 @@ export default function Workspace() {
                   {
                     overview: "Her testin arkasında bir kanıt.",
                     assistant: "AI Test Assistant",
+                    settings: "Ayarlar",
                     model: "Uygulama modeli",
                     elements: "Elementler",
                     tests: "Test çalışma alanı",
@@ -654,6 +663,8 @@ export default function Workspace() {
                       "İş niyetini tanımla, uygulama bilgisini paylaş ve sonucu güvenle incele.",
                     assistant:
                       "İzinli hedefi incele, senaryoları gözden geçir ve suite çalıştır.",
+                    settings:
+                      "AI sağlayıcılarını, modelleri ve bağlantı ayarlarını yönet.",
                     model:
                       "Keşif önerilerini incele. Onayladığın öğeler sürümlü modelin parçası olsun.",
                     tests:
@@ -667,7 +678,8 @@ export default function Workspace() {
             </div>
             {section !== "model" &&
               section !== "elements" &&
-              section !== "assistant" && (
+              section !== "assistant" &&
+              section !== "settings" && (
                 <button
                   className="primary"
                   onClick={() => {
@@ -688,16 +700,26 @@ export default function Workspace() {
               </button>
             </div>
           )}
-          <div className="prototype-banner">
-            <FlaskConical size={16} />
-            <span>Geliştirme sürümü</span> Klasik testler yerel Demo Bank
-            üzerinde çalışır; AI suite’ler yalnız yapılandırılmış izinli
-            hedeflere gider.
-          </div>
+          {section !== "assistant" && section !== "settings" && (
+            <div className="prototype-banner">
+              <FlaskConical size={16} />
+              <span>Geliştirme sürümü</span> Klasik testler yerel Demo Bank
+              üzerinde çalışır; AI suite’ler yalnız yapılandırılmış izinli
+              hedeflere gider.
+            </div>
+          )}
           {section === "assistant" && (
             <AiAssistant
               projectId={projectId}
               canEdit={actor.role !== "viewer"}
+              mode="chat"
+            />
+          )}
+          {section === "settings" && (
+            <AiAssistant
+              projectId={projectId}
+              canEdit={actor.role !== "viewer"}
+              mode="settings"
             />
           )}
           {section === "overview" && (

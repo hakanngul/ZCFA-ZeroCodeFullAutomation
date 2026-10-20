@@ -82,8 +82,9 @@ taşıma henüz yoktur. Element onayını kaldırma desteklenir.
 
 ## AI Test Assistant
 
-Sol menüden **AI Test Assistant** açılır. **AI Settings** içinde OpenAI-compatible
-provider adı, Base URL (`/v1` dahil), API anahtarı, model ve timeout girilir.
+Sol menüden **Ayarlar** açılarak OpenAI-compatible provider adı, Base URL
+(`/v1` dahil), API anahtarı, model ve timeout girilir. **AI Test Assistant**
+ayrı chat ekranından açılır.
 **Test Connection** gerçek `chat/completions` isteği yapar; **Fetch Models** gerçek
 `models` endpoint'ini okur. Model listeleme yoksa model ID elle yazılabilir.
 Birden fazla provider saklanabilir; aktif olan chat'te seçilir. API anahtarı

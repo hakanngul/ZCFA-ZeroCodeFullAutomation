@@ -1,15 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import {
-  Bot,
-  Plus,
-  Send,
-  Settings2,
-  Play,
-  Check,
-  Trash2,
-  RefreshCw,
-} from "lucide-react";
+import { Bot, Plus, Send, Play, Check, Trash2, RefreshCw } from "lucide-react";
 import { api } from "../lib/api";
 import type { AiSuite } from "../../../../packages/assistant/src/spec";
 import "../assistant.css";
@@ -60,9 +51,11 @@ const initial = {
 export function AiAssistant({
   projectId,
   canEdit,
+  mode,
 }: {
   projectId: string;
   canEdit: boolean;
+  mode: "chat" | "settings";
 }) {
   const root = `/v1/projects/${projectId}/ai`;
   const [providers, setProviders] = useState<Provider[]>([]),
@@ -71,8 +64,7 @@ export function AiAssistant({
   const [conversationId, setConversationId] = useState(""),
     [messages, setMessages] = useState<Message[]>([]),
     [drafts, setDrafts] = useState<Draft[]>([]);
-  const [settings, setSettings] = useState(false),
-    [form, setForm] = useState(initial),
+  const [form, setForm] = useState(initial),
     [editing, setEditing] = useState(""),
     [models, setModels] = useState<string[]>([]);
   const [prompt, setPrompt] = useState(""),
@@ -160,7 +152,6 @@ export function AiAssistant({
       timeoutMs: p.timeoutMs,
     });
     setModels([]);
-    setSettings(true);
   }
   async function send() {
     await task(async () => {
@@ -226,256 +217,259 @@ export function AiAssistant({
   }
   const selected = providers.find((p) => p.id === providerId);
   return (
-    <div className="ai-layout">
-      <aside className="ai-history card">
-        <button
-          className="primary"
-          onClick={() => {
-            setConversationId("");
-            setMessages([]);
-            setDrafts([]);
-            setRun(null);
-          }}
-        >
-          <Plus size={16} /> Yeni konuşma
-        </button>
-        <span className="eyebrow">KONUŞMALAR</span>
-        {conversations.map((c) => (
-          <button
-            key={c.id}
-            className={conversationId === c.id ? "selected" : ""}
-            onClick={() => void task(() => loadConversation(c.id))}
-          >
-            {c.title}
-          </button>
-        ))}
-      </aside>
-      <section className="ai-chat card">
-        <div className="ai-chat-head">
-          <div>
-            <span className="eyebrow">AI TEST ASSISTANT</span>
-            <h2>Testleri birlikte oluştur</h2>
-            <p>
-              İzinli sayfayı Chromium ile incele, senaryoları gözden geçir ve
-              çalıştır.
-            </p>
-          </div>
-          <button className="secondary" onClick={() => setSettings(true)}>
-            <Settings2 size={16} /> AI Settings
-          </button>
-        </div>
-        <div className="ai-provider-row">
-          <label>
-            Provider
-            <select
-              aria-label="Aktif provider"
-              value={providerId}
-              onChange={(e) => setProviderId(e.target.value)}
+    <>
+      {mode === "chat" && (
+        <div className="ai-layout">
+          <aside className="ai-history card">
+            <button
+              className="primary"
+              onClick={() => {
+                setConversationId("");
+                setMessages([]);
+                setDrafts([]);
+                setRun(null);
+              }}
             >
-              {providers
-                .filter((p) => p.active)
-                .map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label>
-            Model
-            <input
-              aria-label="Chat modeli"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-            />
-          </label>
-        </div>
-        <div className="ai-thread" aria-live="polite">
-          {!messages.length && (
-            <div className="ai-empty">
-              <Bot size={32} />
-              <h3>Bir hedef ve test isteği yaz</h3>
-              <p>
-                Örnek: Giriş formunu incele; boş alan ve yanlış bilgi
-                senaryoları hazırla.
+              <Plus size={16} /> Yeni konuşma
+            </button>
+            <span className="eyebrow">KONUŞMALAR</span>
+            {conversations.map((c) => (
+              <button
+                key={c.id}
+                className={conversationId === c.id ? "selected" : ""}
+                onClick={() => void task(() => loadConversation(c.id))}
+              >
+                {c.title}
+              </button>
+            ))}
+          </aside>
+          <section className="ai-chat card">
+            <div className="ai-chat-head">
+              <div>
+                <span className="eyebrow">AI TEST ASSISTANT</span>
+                <h2>Testleri birlikte oluştur</h2>
+                <p>
+                  İzinli sayfayı Chromium ile incele, senaryoları gözden geçir
+                  ve çalıştır.
+                </p>
+              </div>
+            </div>
+            <div className="ai-provider-row">
+              <label>
+                Provider
+                <select
+                  aria-label="Aktif provider"
+                  value={providerId}
+                  onChange={(e) => setProviderId(e.target.value)}
+                >
+                  {providers
+                    .filter((p) => p.active)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label>
+                Model
+                <input
+                  aria-label="Chat modeli"
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                />
+              </label>
+            </div>
+            {!providers.some((p) => p.active) && (
+              <p className="ai-config-hint">
+                Başlamak için sol menüdeki Ayarlar bölümünden bir AI sağlayıcısı
+                ekle.
               </p>
-            </div>
-          )}
-          {messages.map((m) => (
-            <div key={m.id} className={`ai-message ${m.role}`}>
-              <strong>{m.role === "user" ? "Sen" : "AI Assistant"}</strong>
-              <p>{m.content}</p>
-            </div>
-          ))}
-          {drafts.map((d) => (
-            <div className="ai-draft" key={d.id}>
-              <strong>
-                {d.status === "ready"
-                  ? "Senaryo taslağı"
-                  : d.status === "failed"
-                    ? "Analiz başarısız"
-                    : "Sayfa inceleniyor…"}
-              </strong>
-              {d.error_code && <p>{d.error_code}</p>}
-              {d.inspection && (
-                <p>
-                  {d.inspection.title} · {d.inspection.elements.length} DOM
-                  öğesi
-                </p>
+            )}
+            <div className="ai-thread" aria-live="polite">
+              {!messages.length && (
+                <div className="ai-empty">
+                  <Bot size={32} />
+                  <h3>Bir hedef ve test isteği yaz</h3>
+                  <p>
+                    Örnek: Giriş formunu incele; boş alan ve yanlış bilgi
+                    senaryoları hazırla.
+                  </p>
+                </div>
               )}
-              {d.definition && (
-                <>
-                  <h3>{d.definition.title}</h3>
-                  {d.definition.scenarios.map((s, i) => (
-                    <p key={i}>
-                      {s.category} · {s.title} · {s.actions.length} adım
-                    </p>
-                  ))}
-                  {editingDraft === d.id ? (
-                    <>
-                      <label>
-                        Kaydetmeden önce suite JSON’unu düzenle
-                        <textarea
-                          aria-label="Suite taslağı"
-                          rows={15}
-                          value={suiteJson}
-                          onChange={(e) => setSuiteJson(e.target.value)}
-                        />
-                      </label>
-                      <button
-                        className="primary"
-                        disabled={busy || !canEdit}
-                        onClick={() => void saveDraft(d.id)}
-                      >
-                        <Check size={15} /> Onayla ve kaydet
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      className="secondary"
-                      onClick={() => {
-                        setEditingDraft(d.id);
-                        setSuiteJson(JSON.stringify(d.definition, null, 2));
-                      }}
-                    >
-                      Taslağı düzenle
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          ))}
-          {run && (
-            <div className="ai-run">
-              <strong>Suite çalışması · {run.status}</strong>
-              {run.result?.counts && (
-                <p>
-                  {run.result.counts.passed} başarılı ·{" "}
-                  {run.result.counts.failed} başarısız ·{" "}
-                  {run.result.counts.skipped} atlandı
-                </p>
-              )}
-              {run.result?.results?.map((r, i) => (
-                <div key={i}>
+              {messages.map((m) => (
+                <div key={m.id} className={`ai-message ${m.role}`}>
+                  <strong>{m.role === "user" ? "Sen" : "AI Assistant"}</strong>
+                  <p>{m.content}</p>
+                </div>
+              ))}
+              {drafts.map((d) => (
+                <div className="ai-draft" key={d.id}>
                   <strong>
-                    {r.title}: {r.status}
+                    {d.status === "ready"
+                      ? "Senaryo taslağı"
+                      : d.status === "failed"
+                        ? "Analiz başarısız"
+                        : "Sayfa inceleniyor…"}
                   </strong>
-                  {r.code && <p>Hata: {r.code}</p>}
-                  {r.steps.map((step, n) => (
-                    <p key={n}>
-                      {step.kind}: {step.status} {step.code ?? ""}
+                  {d.error_code && <p>{d.error_code}</p>}
+                  {d.inspection && (
+                    <p>
+                      {d.inspection.title} · {d.inspection.elements.length} DOM
+                      öğesi
                     </p>
-                  ))}
-                  {r.screenshot && (
-                    <a
-                      target="_blank"
-                      rel="noreferrer"
-                      href={`/api${root}/runs/${run.id}/screenshots/${i}`}
-                    >
-                      Ekran görüntüsü
-                    </a>
+                  )}
+                  {d.definition && (
+                    <>
+                      <h3>{d.definition.title}</h3>
+                      {d.definition.scenarios.map((s, i) => (
+                        <p key={i}>
+                          {s.category} · {s.title} · {s.actions.length} adım
+                        </p>
+                      ))}
+                      {editingDraft === d.id ? (
+                        <>
+                          <label>
+                            Kaydetmeden önce suite JSON’unu düzenle
+                            <textarea
+                              aria-label="Suite taslağı"
+                              rows={15}
+                              value={suiteJson}
+                              onChange={(e) => setSuiteJson(e.target.value)}
+                            />
+                          </label>
+                          <button
+                            className="primary"
+                            disabled={busy || !canEdit}
+                            onClick={() => void saveDraft(d.id)}
+                          >
+                            <Check size={15} /> Onayla ve kaydet
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          className="secondary"
+                          onClick={() => {
+                            setEditingDraft(d.id);
+                            setSuiteJson(JSON.stringify(d.definition, null, 2));
+                          }}
+                        >
+                          Taslağı düzenle
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               ))}
+              {run && (
+                <div className="ai-run">
+                  <strong>Suite çalışması · {run.status}</strong>
+                  {run.result?.counts && (
+                    <p>
+                      {run.result.counts.passed} başarılı ·{" "}
+                      {run.result.counts.failed} başarısız ·{" "}
+                      {run.result.counts.skipped} atlandı
+                    </p>
+                  )}
+                  {run.result?.results?.map((r, i) => (
+                    <div key={i}>
+                      <strong>
+                        {r.title}: {r.status}
+                      </strong>
+                      {r.code && <p>Hata: {r.code}</p>}
+                      {r.steps.map((step, n) => (
+                        <p key={n}>
+                          {step.kind}: {step.status} {step.code ?? ""}
+                        </p>
+                      ))}
+                      {r.screenshot && (
+                        <a
+                          target="_blank"
+                          rel="noreferrer"
+                          href={`/api${root}/runs/${run.id}/screenshots/${i}`}
+                        >
+                          Ekran görüntüsü
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        {suites.length > 0 && (
-          <div className="ai-suites">
-            <strong>Kaydedilen suite’ler</strong>
-            {suites.map((s) => (
-              <div key={s.id}>
-                <span>
-                  {s.definition.title} · {s.definition.scenarios.length} senaryo
-                </span>
-                <button
-                  className="secondary"
-                  disabled={busy || !canEdit}
-                  onClick={() => void startRun(s.id)}
-                >
-                  <Play size={14} /> Çalıştır
-                </button>
-                <button
-                  className="secondary"
-                  disabled={busy || !canEdit}
-                  onClick={() => void revise(s.id)}
-                >
-                  Yeni taslak olarak düzelt
-                </button>
+            {suites.length > 0 && (
+              <div className="ai-suites">
+                <strong>Kaydedilen suite’ler</strong>
+                {suites.map((s) => (
+                  <div key={s.id}>
+                    <span>
+                      {s.definition.title} · {s.definition.scenarios.length}{" "}
+                      senaryo
+                    </span>
+                    <button
+                      className="secondary"
+                      disabled={busy || !canEdit}
+                      onClick={() => void startRun(s.id)}
+                    >
+                      <Play size={14} /> Çalıştır
+                    </button>
+                    <button
+                      className="secondary"
+                      disabled={busy || !canEdit}
+                      onClick={() => void revise(s.id)}
+                    >
+                      Yeni taslak olarak düzelt
+                    </button>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-        {error && (
-          <p role="alert" className="error">
-            {error}
-          </p>
-        )}
-        {notice && <p role="status">{notice}</p>}
-        <div className="ai-composer">
-          <label>
-            Yetkili hedef URL
-            <input
-              aria-label="Hedef URL"
-              value={targetUrl}
-              onChange={(e) => setTargetUrl(e.target.value)}
-            />
-          </label>
-          <textarea
-            aria-label="Test isteği"
-            rows={3}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Örnek: Login sayfasını analiz et; pozitif, negatif ve sınır senaryolarını hazırla."
-          />
-          <button
-            className="primary"
-            disabled={
-              busy ||
-              !canEdit ||
-              !providerId ||
-              !model ||
-              prompt.trim().length < 10
-            }
-            onClick={() => void send()}
-          >
-            <Send size={16} /> Gönder
-          </button>
-        </div>
-      </section>
-      {settings && (
-        <div className="ai-modal-backdrop" role="presentation">
-          <div
-            className="ai-modal card"
-            role="dialog"
-            aria-modal="true"
-            aria-label="AI Settings"
-          >
-            <div className="ai-chat-head">
-              <h2>AI Settings</h2>
-              <button className="secondary" onClick={() => setSettings(false)}>
-                Kapat
+            )}
+            {error && (
+              <p role="alert" className="error">
+                {error}
+              </p>
+            )}
+            {notice && <p role="status">{notice}</p>}
+            <div className="ai-composer">
+              <label>
+                Yetkili hedef URL
+                <input
+                  aria-label="Hedef URL"
+                  value={targetUrl}
+                  onChange={(e) => setTargetUrl(e.target.value)}
+                />
+              </label>
+              <textarea
+                aria-label="Test isteği"
+                rows={3}
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="Örnek: Login sayfasını analiz et; pozitif, negatif ve sınır senaryolarını hazırla."
+              />
+              <button
+                className="primary"
+                disabled={
+                  busy ||
+                  !canEdit ||
+                  !providerId ||
+                  !model ||
+                  prompt.trim().length < 10
+                }
+                onClick={() => void send()}
+              >
+                <Send size={16} /> Gönder
               </button>
+            </div>
+          </section>
+        </div>
+      )}
+      {mode === "settings" && (
+        <div className="ai-settings-page">
+          <div className="ai-settings-card card">
+            <div className="ai-chat-head">
+              <div>
+                <span className="eyebrow">AI PROVIDER</span>
+                <h2>Sağlayıcı bağlantıları</h2>
+              </div>
             </div>
             <p>
               OpenAI-compatible provider · API anahtarı yalnız sunucuda şifreli
@@ -660,6 +654,6 @@ export function AiAssistant({
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

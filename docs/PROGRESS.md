@@ -1,5 +1,14 @@
 # Devam noktası — 19 Ekim 2026
 
+## 20 Ekim 2026 — AI ayarları ve chat ekran kanıtı
+
+Provider, Base URL ve API anahtarı formu chat içindeki pencereden çıkarılıp
+sidebar'daki **Ayarlar** sayfasına taşındı. Chat yalnız aktif provider/model
+seçimini gösteriyor. E2E ekran yakalama, provider yüklendikten sonra boş chat'i
+ve tüm konuşma, suite ve PASS sonucunu içeren chat'i kaydediyor. Güncel PNG'ler
+`docs/evidence/assistant/` altında; UI testi gerçek yerel provider, API ve
+Chromium ile çalışıyor.
+
 ## 20 Ekim 2026 — AI Test Assistant artımı
 
 Kullanıcının doğal dil ile hedef inceleme, provider ayarları, düzenlenebilir

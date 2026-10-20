@@ -137,34 +137,51 @@ test(
       await page
         .getByRole("button", { name: /Yerel çalışma alanını aç/ })
         .click();
-      await page
-        .getByRole("button", { name: "AI Test Assistant", exact: true })
-        .click();
-      await page.getByRole("button", { name: "AI Settings" }).click();
-      const dialog = page.getByRole("dialog", { name: "AI Settings" });
-      await dialog
+      await page.getByRole("button", { name: "Ayarlar", exact: true }).click();
+      const settings = page.locator(".ai-settings-card");
+      await settings
         .getByRole("textbox", { name: "Provider adı" })
         .fill("Yerel test provider");
-      await dialog
+      await settings
         .getByRole("textbox", { name: "Custom Base URL" })
         .fill("http://127.0.0.1:4250/v1");
-      await dialog
+      await settings
         .getByRole("textbox", { name: "API Key" })
         .fill("ui-test-secret");
-      await dialog.getByRole("button", { name: "Fetch Models" }).click();
-      await dialog.getByText("1 model yüklendi.").waitFor();
-      await dialog
+      await settings.getByRole("button", { name: "Fetch Models" }).click();
+      await settings.getByText("1 model yüklendi.").waitFor();
+      await settings
         .getByRole("combobox", { name: "Model", exact: true })
         .selectOption("ui-model");
-      await dialog.getByRole("button", { name: "Test Connection" }).click();
-      await dialog.getByText("Gerçek provider bağlantısı başarılı.").waitFor();
-      await dialog.getByRole("button", { name: "Save Provider" }).click();
-      await dialog.getByText("Provider kaydedildi.").waitFor();
+      await settings.getByRole("button", { name: "Test Connection" }).click();
+      await settings
+        .getByText("Gerçek provider bağlantısı başarılı.")
+        .waitFor();
+      await settings.getByRole("button", { name: "Save Provider" }).click();
+      await settings.getByText("Provider kaydedildi.").waitFor();
       await page.screenshot({
         path: join(evidence, "settings.png"),
         fullPage: true,
       });
-      await dialog.getByRole("button", { name: "Kapat" }).click();
+      await page
+        .getByRole("button", { name: "AI Test Assistant", exact: true })
+        .click();
+      await page.waitForFunction(
+        () =>
+          (
+            document.querySelector(
+              'input[aria-label="Chat modeli"]',
+            ) as HTMLInputElement
+          )?.value === "ui-model",
+      );
+      assert.equal(
+        await page.getByRole("textbox", { name: "API Key" }).count(),
+        0,
+      );
+      await page.screenshot({
+        path: join(evidence, "chat-empty.png"),
+        fullPage: true,
+      });
       await page
         .getByRole("textbox", { name: "Test isteği" })
         .fill(
@@ -184,6 +201,14 @@ test(
       await page
         .getByText("1 başarılı · 0 başarısız · 0 atlandı")
         .waitFor({ timeout: 30000 });
+      await page.locator(".ai-thread").evaluate((element: HTMLElement) => {
+        element.style.maxHeight = "none";
+        element.style.overflow = "visible";
+        element.scrollTop = 0;
+      });
+      await page
+        .locator(".ai-chat")
+        .screenshot({ path: join(evidence, "chat.png") });
       await page.screenshot({
         path: join(evidence, "suite.png"),
         fullPage: true,
