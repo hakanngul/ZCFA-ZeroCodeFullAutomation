@@ -19,6 +19,15 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
+Daha önce provider'ı farklı bir `ZC_DATA_DIR` altında kaydettiysen
+`pnpm dev:resume` mevcut `.local/*/zerocode.sqlite` ve eski
+`/tmp/zerocode-demo.*/zerocode.sqlite` dosyalarını tarar; provider kaydı olan
+en güncel veriyi seçer. Geçici dizindeki veriyi SQLite backup ile `.local/`
+altına taşır ve `assistant.key` dosyasını birlikte korur. Hangi dizini
+kullandığını başlangıçta yazar; hiçbir mevcut veritabanının üzerine yazmaz.
+Belirli bir dizini seçmek için `ZC_DATA_DIR="$PWD/.local/my-data" pnpm dev`
+kullanabilirsin.
+
 Bulut ortamında home dizinine yazılamıyorsa, önce şu dizinleri seç:
 
 ```sh

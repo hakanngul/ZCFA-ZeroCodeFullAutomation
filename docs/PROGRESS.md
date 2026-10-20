@@ -1,5 +1,15 @@
 # Devam noktası — 19 Ekim 2026
 
+## 20 Ekim 2026 — Provider verisini otomatik sürdürme
+
+Kullanıcının gerçek kalıcı veri dizini `.local/my-data` olarak netleşti. Eski
+belirsiz yol yönergesi yerine `ZC_DATA_DIR="$PWD/.local/my-data" pnpm dev`
+çalıştırılabilir. Ek olarak `pnpm dev:resume` provider içeren SQLite dosyalarını
+`.local/*` ve eski `/tmp/zerocode-demo.*` dizinlerinde tarayıp en güncel kaydı
+seçer; geçici dosyayı SQLite backup ile kalıcı `.local/recovered-*` dizinine
+taşırken şifreleme anahtarı ve kanıtları birlikte kopyalar. Mevcut DB üzerine
+yazmaz; seçilen yolu konsola bildirir.
+
 ## 20 Ekim 2026 — AGENT_ERROR teşhisi ve harici ağ engeli
 
 Worker'ın `/usr/bin/chromium` yolunu tüm işletim sistemlerinde varsayması

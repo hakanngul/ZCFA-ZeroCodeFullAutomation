@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "tsx scripts/dev.ts",
+    "dev:resume": "tsx scripts/dev-resume.ts",
     "dev:web": "next dev apps/web --hostname 127.0.0.1 --port 5000",
     "dev:api": "tsx apps/api/src/main.ts",
     "dev:worker": "tsx apps/worker/src/main.ts",
