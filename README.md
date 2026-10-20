@@ -9,8 +9,10 @@ veritabanları [kanıt arşivinde](docs/evidence/README.md) bulunur.
 ## Çalıştırma
 
 Node **24.x**, pnpm **11.25.0** ve Chromium gerekir. Bu bulut makinesinde Chromium
-`/usr/bin/chromium` konumunda hazırdır. Başka bir kurulumda `ZC_CHROMIUM_PATH`
-ile executable yolu seçilebilir. Uzak bağlantı ve credential gerekmez.
+`/usr/bin/chromium` konumunda hazırdır. Kendi bilgisayarında Playwright'ın
+Chromium'unu `pnpm exec playwright install chromium` ile kurabilirsin;
+`ZC_CHROMIUM_PATH` belirli bir tarayıcı yolunu seçer. Yerel demo için uzak
+bağlantı ve credential gerekmez.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -105,10 +107,14 @@ Model yalnız gözlenen locator'larla yapılandırılmış suite taslağı dönd
 Taslak JSON olarak düzenlenir, insan onayıyla kaydedilir; `Testler` ekranındaki
 **AI suite’ler** listesinde ve chat'te görünür. Çalıştırma her senaryoyu ayrı
 Chromium context'inde yürütür; durum, adım hataları, başarılı/başarısız/atlanan
-sayıları ve yetki/checksum kontrollü ekran görüntüsü chat'te görünür. Başarısız
+sayıları ve her adımın yetki/checksum kontrollü ekran görüntüsü chat'te görünür. Başarısız
 suite için modelden hata önerisi istenir; suite yeni taslak olarak düzeltilip
 tekrar onaylanabilir. Kod çalıştırma, otomatik locator değiştirme ve sınırsız
 agent döngüsü yoktur.
+
+AI planlayıcı şu anda yalnız başlangıç sayfasının DOM'unu inceler. Girişten
+sonra açılan sepet ve ödeme sayfalarındaki yeni locator'ları keşfetmediği için
+tek promptla tam sipariş akışı henüz desteklenmez.
 
 Hedef varsayılan olarak yalnız `http://127.0.0.1:4100` demo origin'idir.
 Harici HTTPS siteleri **Ayarlar → Test edilecek siteler** listesine ekle; URL

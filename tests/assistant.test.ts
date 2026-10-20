@@ -334,6 +334,13 @@ test(
       });
       assert.equal(screenshot.statusCode, 200);
       assert.equal(screenshot.headers["content-type"], "image/png");
+      const stepScreenshot = await app.inject({
+        method: "GET",
+        url: `/v1/projects/${demoProject}/ai/runs/${run.body.id}/screenshots/0/steps/0`,
+        headers,
+      });
+      assert.equal(stepScreenshot.statusCode, 200);
+      assert.equal(stepScreenshot.headers["content-type"], "image/png");
       const revision = await call(
         "POST",
         `/v1/projects/${demoProject}/ai/suites/${suite.body.id}/revise`,

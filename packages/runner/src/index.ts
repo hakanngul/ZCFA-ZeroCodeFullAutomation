@@ -1,6 +1,7 @@
 import { chromium } from "playwright";
 import type { Browser, Page, Locator } from "playwright";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
@@ -78,11 +79,29 @@ async function guardedContext(browser: Browser) {
   return context;
 }
 export async function launchBrowser() {
-  return chromium.launch({
-    executablePath: process.env.ZC_CHROMIUM_PATH ?? "/usr/bin/chromium",
-    headless: true,
-    timeout: 10000,
-  });
+  const executablePath =
+    process.env.ZC_CHROMIUM_PATH ??
+    (existsSync("/usr/bin/chromium") ? "/usr/bin/chromium" : undefined);
+  try {
+    return await chromium.launch({
+      executablePath,
+      headless: true,
+      timeout: 10000,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (
+      /Executable doesn't exist|browserType\.launch:.*not found/i.test(message)
+    )
+      throw new DomainError(
+        "BROWSER_UNAVAILABLE",
+        "Chromium bulunamadı. pnpm exec playwright install chromium çalıştırın.",
+      );
+    throw new DomainError(
+      "BROWSER_START_FAILED",
+      "Chromium başlatılamadı. Worker ortamını ve tarayıcı kurulumunu kontrol edin.",
+    );
+  }
 }
 export async function checkLocator(
   browser: Browser,

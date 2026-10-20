@@ -664,4 +664,45 @@ export function registerAssistant(
       return reply.type("image/png").send(data);
     },
   );
+  app.get(
+    "/v1/projects/:projectId/ai/runs/:id/screenshots/:index/steps/:step",
+    async (request, reply) => {
+      const { user, projectId } = scoped(request),
+        { id, index, step } = z
+          .object({
+            id: z.uuid(),
+            index: z.coerce.number().int().min(0).max(7),
+            step: z.coerce.number().int().min(0).max(7),
+          })
+          .parse(request.params);
+      const row = store.db
+        .prepare(
+          "SELECT result FROM ai_suite_runs WHERE id=? AND org_id=? AND project_id=?",
+        )
+        .get(id, user.orgId, projectId);
+      if (!row?.result)
+        throw new DomainError("NOT_FOUND", "Kanıt bulunamadı.", 404);
+      const expected = JSON.parse(row.result as string).results[index]?.steps[
+        step
+      ]?.screenshot;
+      if (!expected)
+        throw new DomainError("NOT_FOUND", "Kanıt bulunamadı.", 404);
+      const data = await readFile(
+        resolve(
+          store.dataDir,
+          "artifacts",
+          id,
+          String(index),
+          `step-${step}.png`,
+        ),
+      );
+      if (createHash("sha256").update(data).digest("hex") !== expected.sha256)
+        throw new DomainError(
+          "EVIDENCE_CORRUPTED",
+          "Kanıt bütünlüğü bozuldu.",
+          409,
+        );
+      return reply.type("image/png").send(data);
+    },
+  );
 }

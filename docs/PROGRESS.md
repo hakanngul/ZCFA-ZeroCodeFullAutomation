@@ -1,5 +1,21 @@
 # Devam noktası — 19 Ekim 2026
 
+## 20 Ekim 2026 — AGENT_ERROR teşhisi ve harici ağ engeli
+
+Worker'ın `/usr/bin/chromium` yolunu tüm işletim sistemlerinde varsayması
+tarayıcı açılış hatasını `AGENT_ERROR` olarak saklıyordu. Şimdi belirtilen
+`ZC_CHROMIUM_PATH`, Linux sistem Chromium'u veya Playwright'ın kurulu Chromium'u
+seçiliyor; eksik tarayıcı `BROWSER_UNAVAILABLE`, açılış hatası
+`BROWSER_START_FAILED` olarak bildiriliyor. Hedef gezinme zaman aşımı, TLS ve
+ağ hataları da ayrı kodlarla görünür. Harici SauceDemo ve Evren provider
+hostlarına bu bulutun proxy politikası 403 `policy_denied` verdi. İki alan adı
+için bulut ortamı izin taslağı kaydedildi; yayınlanmadığı sürece gerçek provider
+ve harici site akışı bu ortamda doğrulanamaz. Yerel Chromium fixture ile
+çalıştırılabilir suite'in her adımı için maskeli, checksum kontrollü PNG
+üretimi ve API/chat bağlantısı eklendi. Planlayıcı yalnız ilk sayfa DOM'unu
+incelediğinden login sonrası sepet/ödeme locator'larını henüz keşfetmiyor;
+tam sipariş akışı başarılıymış gibi sunulamaz.
+
 ## 20 Ekim 2026 — Chat'ten hedef yetkilendirme
 
 `TARGET_BLOCKED` hatasında chat, HTTPS hedefi için **Siteyi ekle ve tekrar

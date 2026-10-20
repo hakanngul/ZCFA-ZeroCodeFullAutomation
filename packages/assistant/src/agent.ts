@@ -100,10 +100,28 @@ export async function inspect(
   const context = await contextFor(browser, target);
   try {
     const page = await context.newPage();
-    await page.goto(target.href, {
-      waitUntil: "domcontentloaded",
-      timeout: 10000,
-    });
+    try {
+      await page.goto(target.href, {
+        waitUntil: "domcontentloaded",
+        timeout: 10000,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (/Timeout/i.test(message))
+        throw new DomainError(
+          "TARGET_TIMEOUT",
+          "Hedef sayfa 10 saniyede açılamadı.",
+        );
+      if (/ERR_CERT|SSL/i.test(message))
+        throw new DomainError(
+          "TARGET_TLS_ERROR",
+          "Hedef sitenin TLS sertifikası doğrulanamadı.",
+        );
+      throw new DomainError(
+        "TARGET_NAVIGATION_FAILED",
+        "Hedef sayfa Chromium ile açılamadı. Ağ/proxy erişimini kontrol edin.",
+      );
+    }
     const elements = await page
       .locator("input,button,a,select,textarea,[role]")
       .evaluateAll((nodes) =>
@@ -240,7 +258,12 @@ export async function executeSuite(
     title: string;
     category: string;
     status: "passed" | "failed" | "skipped";
-    steps: { kind: string; status: string; code?: string }[];
+    steps: {
+      kind: string;
+      status: string;
+      code?: string;
+      screenshot?: { filename: string; sha256: string };
+    }[];
     code?: string;
     screenshot?: { filename: string; sha256: string };
   }[] = [];
@@ -250,7 +273,12 @@ export async function executeSuite(
     const timeout = setTimeout(() => {
       void context.close();
     }, 30000);
-    const steps: { kind: string; status: string; code?: string }[] = [];
+    const steps: {
+      kind: string;
+      status: string;
+      code?: string;
+      screenshot?: { filename: string; sha256: string };
+    }[] = [];
     let status: "passed" | "failed" | "skipped" = "passed",
       code: string | undefined;
     let screenshot: { filename: string; sha256: string } | undefined;
@@ -260,7 +288,13 @@ export async function executeSuite(
         waitUntil: "domcontentloaded",
         timeout: 10000,
       });
-      for (const action of scenario.actions) {
+      const directory = resolve(artifactRoot, String(index));
+      await mkdir(directory, { recursive: true });
+      for (const [stepIndex, action] of scenario.actions.entries()) {
+        const step: (typeof steps)[number] = {
+          kind: action.kind,
+          status: "passed",
+        };
         try {
           if ("locator" in action) {
             const locator = locate(page, action.locator);
@@ -302,16 +336,36 @@ export async function executeSuite(
             if (page.url() !== action.expected)
               throw new DomainError("ASSERTION_FAILED", "URL eşleşmedi.");
           }
-          steps.push({ kind: action.kind, status: "passed" });
         } catch (error) {
           code = error instanceof DomainError ? error.code : "ACTION_FAILED";
-          steps.push({ kind: action.kind, status: "failed", code });
+          step.status = "failed";
+          step.code = code;
           status = "failed";
-          break;
         }
+        try {
+          const filename = `step-${stepIndex}.png`,
+            path = resolve(directory, filename);
+          await page.screenshot({
+            path,
+            fullPage: true,
+            mask: [page.locator("input,textarea,[contenteditable]")],
+            timeout: 3000,
+          });
+          step.screenshot = {
+            filename,
+            sha256: createHash("sha256")
+              .update(await readFile(path))
+              .digest("hex"),
+          };
+        } catch {
+          step.status = "failed";
+          step.code = "EVIDENCE_FAILED";
+          code = "EVIDENCE_FAILED";
+          status = "failed";
+        }
+        steps.push(step);
+        if (status === "failed") break;
       }
-      const directory = resolve(artifactRoot, String(index));
-      await mkdir(directory, { recursive: true });
       const filename = `scenario-${index}.png`,
         path = resolve(directory, filename);
       await page.screenshot({

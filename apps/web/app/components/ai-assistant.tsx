@@ -36,7 +36,12 @@ type Run = {
       title: string;
       status: string;
       code?: string;
-      steps: { kind: string; status: string; code?: string }[];
+      steps: {
+        kind: string;
+        status: string;
+        code?: string;
+        screenshot?: { filename: string; sha256: string };
+      }[];
       screenshot?: { filename: string; sha256: string };
     }[];
   } | null;
@@ -406,7 +411,16 @@ export function AiAssistant({
                       {r.code && <p>Hata: {r.code}</p>}
                       {r.steps.map((step, n) => (
                         <p key={n}>
-                          {step.kind}: {step.status} {step.code ?? ""}
+                          {step.kind}: {step.status} {step.code ?? ""}{" "}
+                          {step.screenshot && (
+                            <a
+                              target="_blank"
+                              rel="noreferrer"
+                              href={`/api${root}/runs/${run.id}/screenshots/${i}/steps/${n}`}
+                            >
+                              Adım görüntüsü
+                            </a>
+                          )}
                         </p>
                       ))}
                       {r.screenshot && (

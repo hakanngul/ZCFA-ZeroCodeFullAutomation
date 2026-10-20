@@ -292,7 +292,9 @@ while (!stopping) {
               randomUUID(),
               draft.conversation_id,
               "assistant",
-              `Analiz tamamlanamadı: ${code}`,
+              error instanceof DomainError
+                ? `Analiz tamamlanamadı: ${error.message} (${code})`
+                : `Analiz tamamlanamadı: ${code}`,
               new Date().toISOString(),
             );
         store.db
