@@ -1,5 +1,18 @@
 # Devam noktası — 19 Ekim 2026
 
+## 20 Ekim 2026 — AI şema düzeltmesi ve element kaydı
+
+`PROVIDER_FORMAT` için şema doğrulama hataları kısa alan kodlarıyla modele
+iletiliyor; en fazla bir düzeltme çağrısından sonra hâlâ geçersizse açık hata
+gösteriliyor. Chromium incelemesi başarıyla bittikten hemen sonra elementler
+migration 005'teki org/proje/sayfa/locator anahtarlı SQLite tablosuna
+kaydediliyor. Böylece model geçersiz JSON döndürse bile incelenen öğeler
+Elementler ekranında kalıyor. Demo Bank'ın onaylı model revision'ları
+değiştirilmiyor. Yerel HTTP provider testi ilk yanıtta bozuk, ikinci yanıtta
+geçerli JSON senaryosunu doğruladı; sürekli bozuk yanıt durumunda da 4 öğenin
+kayıtlı kaldığı doğrulandı. Harici Evren provider yanıtı bulut ağ engeli
+nedeniyle burada doğrulanamadı.
+
 ## 20 Ekim 2026 — Provider verisini otomatik sürdürme
 
 Kullanıcının gerçek kalıcı veri dizini `.local/my-data` olarak netleşti. Eski

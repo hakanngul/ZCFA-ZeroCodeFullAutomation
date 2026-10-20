@@ -35,6 +35,7 @@ test(
     process.env.ZC_AI_ENCRYPTION_KEY = randomBytes(32).toString("base64");
     const provider = Fastify(),
       seenModels: string[] = [];
+    let sentMalformed = false;
     provider.get("/v1/models", async (request, reply) => {
       if (request.headers.authorization !== "Bearer secret-test-key")
         return reply.code(401).send({ error: "unauthorized" });
@@ -62,6 +63,16 @@ test(
               },
             },
           ],
+        };
+      if (body.model === "test-model" && !sentMalformed) {
+        sentMalformed = true;
+        return {
+          choices: [{ message: { content: '{"title":"Eksik suite"}' } }],
+        };
+      }
+      if (body.model === "bad-model")
+        return {
+          choices: [{ message: { content: '{"title":"Eksik suite"}' } }],
         };
       return {
         choices: [
@@ -285,7 +296,21 @@ test(
         detail.drafts[0].definition.scenarios[0].category,
         "negative",
       );
-      assert.equal(seenModels.filter((m) => m === "test-model").length, 2);
+      assert.equal(seenModels.filter((m) => m === "test-model").length, 3);
+      const captured = await call(
+        "GET",
+        `/v1/projects/${demoProject}/ai/elements`,
+      );
+      assert.equal(captured.status, 200);
+      assert.equal(captured.body.elements.length, 4);
+      assert.equal(
+        captured.body.elements.some(
+          (element: { locatorKind: string; locatorValue: string }) =>
+            element.locatorKind === "testId" &&
+            element.locatorValue === "login-email",
+        ),
+        true,
+      );
       assert.equal(seenModels.includes("slow-model"), true);
       const bad = structuredClone(detail.drafts[0].definition);
       bad.scenarios[0].actions[0].locator.value = "not-seen";
@@ -380,6 +405,33 @@ test(
         true,
       );
       assert.equal(history.body.runs.length, 2);
+      const malformed = await call(
+        "POST",
+        `/v1/projects/${demoProject}/ai/messages`,
+        {
+          prompt: "Giriş sayfasını tekrar analiz et ve test oluştur",
+          targetUrl: "http://127.0.0.1:4100/login",
+          providerId: saved.body.id,
+          model: "bad-model",
+        },
+      );
+      assert.equal(malformed.status, 202);
+      const malformedDetail = await until(async () => {
+        const response = await call(
+          "GET",
+          `/v1/projects/${demoProject}/ai/conversations/${malformed.body.conversationId}`,
+        );
+        return response.body.drafts[0]?.status === "failed"
+          ? response.body
+          : null;
+      });
+      assert.equal(malformedDetail.drafts[0].error_code, "PROVIDER_FORMAT");
+      assert.equal(malformedDetail.drafts[0].inspection.elements.length, 4);
+      assert.equal(
+        (await call("GET", `/v1/projects/${demoProject}/ai/elements`)).body
+          .elements.length,
+        4,
+      );
       assert.equal(
         (
           await call(

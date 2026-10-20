@@ -146,6 +146,16 @@ export function registerAssistant(
         .all(user.orgId),
     };
   });
+  app.get("/v1/projects/:projectId/ai/elements", async (request) => {
+    const { user, projectId } = scoped(request);
+    return {
+      elements: store.db
+        .prepare(
+          "SELECT id,page_url AS pageUrl,tag,label,role,input_type AS inputType,locator_kind AS locatorKind,locator_value AS locatorValue,first_seen_at AS firstSeenAt,last_seen_at AS lastSeenAt FROM ai_page_elements WHERE org_id=? AND project_id=? ORDER BY last_seen_at DESC,id LIMIT 500",
+        )
+        .all(user.orgId, projectId),
+    };
+  });
   app.post("/v1/ai/authorized-origins", async (request, reply) => {
     const user = actor(request, true);
     const { url } = targetOriginInput.parse(request.body);

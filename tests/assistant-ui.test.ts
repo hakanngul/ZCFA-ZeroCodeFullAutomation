@@ -218,6 +218,17 @@ test(
         path: join(evidence, "suite.png"),
         fullPage: true,
       });
+      await page.getByRole("button", { name: /^Elementler/ }).click();
+      await page
+        .getByRole("heading", {
+          name: "Web sitelerinden kaydedilen elementler",
+        })
+        .waitFor();
+      await page.getByText("testId: login-email").waitFor();
+      await page.screenshot({
+        path: join(evidence, "ai-elements.png"),
+        fullPage: true,
+      });
       await page.getByRole("button", { name: /^Testler/ }).click();
       await page.getByRole("heading", { name: "AI suite’ler" }).waitFor();
       await page.getByText("Giriş doğrulama suite").waitFor();

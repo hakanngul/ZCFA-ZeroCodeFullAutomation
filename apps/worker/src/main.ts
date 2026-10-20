@@ -90,6 +90,35 @@ while (!stopping) {
       );
       await checkTargetNetwork(target);
       const inspection = await inspect(browser, target);
+      store.transaction(() => {
+        const now = new Date().toISOString();
+        const pageUrl = new URL(inspection.url);
+        pageUrl.search = "";
+        pageUrl.hash = "";
+        const save = store.db.prepare(
+          `INSERT INTO ai_page_elements VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(org_id,project_id,page_url,locator_kind,locator_value)
+           DO UPDATE SET tag=excluded.tag,label=excluded.label,role=excluded.role,input_type=excluded.input_type,last_seen_at=excluded.last_seen_at`,
+        );
+        for (const element of inspection.elements)
+          save.run(
+            randomUUID(),
+            job.org_id,
+            job.project_id,
+            pageUrl.href,
+            element.tag,
+            element.text,
+            element.role,
+            element.type,
+            element.locator.kind,
+            element.locator.value,
+            now,
+            now,
+          );
+        store.db
+          .prepare("UPDATE ai_drafts SET inspection=? WHERE id=? AND org_id=?")
+          .run(JSON.stringify(inspection), job.id, job.org_id);
+      });
       const suite = await generateSuite(
         provider,
         draft.model as string,

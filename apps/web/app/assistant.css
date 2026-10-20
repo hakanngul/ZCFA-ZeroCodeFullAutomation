@@ -4,6 +4,40 @@
   gap: 18px;
   align-items: start;
 }
+.ai-element-list {
+  padding: 22px;
+  margin-bottom: 18px;
+}
+.ai-element-list h2 {
+  margin: 4px 0 8px;
+}
+.ai-element-list p,
+.ai-element-list small {
+  color: var(--muted);
+}
+.ai-element-list small {
+  display: block;
+  margin-top: 4px;
+}
+.ai-element-table-wrap {
+  overflow-x: auto;
+  margin-top: 16px;
+}
+.ai-element-list table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.ai-element-list th,
+.ai-element-list td {
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+  max-width: 310px;
+  overflow-wrap: anywhere;
+}
+.ai-element-list code {
+  font-size: 12px;
+}
 .ai-history,
 .ai-chat {
   min-height: 620px;

@@ -89,6 +89,12 @@ Bu artım Giriş ve Dashboard sayfalarıyla sınırlıdır. Harici hedef, iframe
 Shadow DOM kapsamı, genel sayfa kataloğu, kalıcı silme ve otomatik test sürümü
 taşıma henüz yoktur. Element onayını kaldırma desteklenir.
 
+AI Test Assistant'ın Chromium ile incelediği harici veya yerel sayfalardaki DOM
+öğeleri ayrıca **Elementler → Web sitelerinden kaydedilen elementler** listesine
+otomatik kaydedilir. Kayıtlar proje/sayfa/locator bazında güncellenir;
+senaryo JSON'u reddedilse bile başarılı sayfa incelemesi korunur. Bu liste
+Demo Bank'ın onaylı model revision'larından ayrıdır.
+
 ## Mimari
 
 ## AI Test Assistant
@@ -113,6 +119,8 @@ hedef alanına da uygulanır. Hedef henüz yetkili değilse chat, düzenleme yet
 aynı istek yeniden gönderilir. Ayrı worker gerçek Chromium ile
 hedef sayfanın DOM öğelerini pasif inceler, seçilen modele gözlemleri gönderir.
 Model yalnız gözlenen locator'larla yapılandırılmış suite taslağı döndürebilir.
+Şema hatasında modelden en fazla bir kez, hatalı alanlar belirtilerek düzeltilmiş
+JSON istenir; geçersiz yanıt çalıştırılabilir suite olarak kaydedilmez.
 Taslak JSON olarak düzenlenir, insan onayıyla kaydedilir; `Testler` ekranındaki
 **AI suite’ler** listesinde ve chat'te görünür. Çalıştırma her senaryoyu ayrı
 Chromium context'inde yürütür; durum, adım hataları, başarılı/başarısız/atlanan

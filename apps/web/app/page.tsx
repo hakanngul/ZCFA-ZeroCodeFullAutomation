@@ -47,6 +47,7 @@ import {
 
 import { api } from "./lib/api";
 import { ElementRegistry } from "./components/element-registry";
+import { AiElementList } from "./components/ai-element-list";
 import { AiAssistant } from "./components/ai-assistant";
 import { AiSuiteList } from "./components/ai-suite-list";
 
@@ -1046,13 +1047,16 @@ export default function Workspace() {
             </section>
           )}
           {section === "elements" && (
-            <ElementRegistry
-              projectId={projectId}
-              model={data?.model ?? null}
-              canEdit={actor.role !== "viewer"}
-              onSaved={refresh}
-              onDiscover={() => setSection("model")}
-            />
+            <>
+              <AiElementList projectId={projectId} />
+              <ElementRegistry
+                projectId={projectId}
+                model={data?.model ?? null}
+                canEdit={actor.role !== "viewer"}
+                onSaved={refresh}
+                onDiscover={() => setSection("model")}
+              />
+            </>
           )}
           {section === "tests" && (
             <>

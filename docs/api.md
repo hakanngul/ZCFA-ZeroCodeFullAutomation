@@ -70,6 +70,7 @@ uygulamayı açtığı anlamına gelmez: deneme canlı yerel demo hedefinde yap�
 | POST       | /v1/ai/providers/connection                                        | Gerçek chat completion bağlantı testi              |
 | POST       | /v1/ai/providers/models                                            | Gerçek model listesi                               |
 | GET/POST   | /v1/ai/authorized-origins                                          | Yetkili HTTPS hedefleri listele / ekle             |
+| GET        | /v1/projects/:projectId/ai/elements                                | AI ile gözlenen sayfa elementleri                  |
 | DELETE     | /v1/ai/authorized-origins/:id                                      | Yetkili hedefi kaldır                              |
 | GET        | /v1/projects/:projectId/ai/conversations                           | Konuşma geçmişi                                    |
 | GET        | /v1/projects/:projectId/ai/conversations/:id                       | Mesaj, taslak ve çalışma geçmişi                   |
