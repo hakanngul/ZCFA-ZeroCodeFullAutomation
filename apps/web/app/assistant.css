@@ -67,6 +67,17 @@
   background: var(--soft);
   border-radius: 9px;
 }
+.ai-authorize {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--soft);
+}
 .ai-layout input,
 .ai-layout select,
 .ai-layout textarea,

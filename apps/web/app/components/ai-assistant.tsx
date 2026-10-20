@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { Bot, Plus, Send, Play, Check, Trash2, RefreshCw } from "lucide-react";
-import { api } from "../lib/api";
+import { api, ApiError } from "../lib/api";
 import type { AiSuite } from "../../../../packages/assistant/src/spec";
 import "../assistant.css";
 
@@ -74,6 +74,7 @@ export function AiAssistant({
     [models, setModels] = useState<string[]>([]);
   const [prompt, setPrompt] = useState(""),
     [targetUrl, setTargetUrl] = useState("http://127.0.0.1:4100/login"),
+    [pendingTarget, setPendingTarget] = useState(""),
     [providerId, setProviderId] = useState(""),
     [model, setModel] = useState("");
   const [editingDraft, setEditingDraft] = useState(""),
@@ -160,27 +161,45 @@ export function AiAssistant({
     });
     setModels([]);
   }
+  async function submitPrompt(selectedTarget: string) {
+    const response = await api<{ conversationId: string }>(
+      `${root}/messages`,
+      "POST",
+      {
+        conversationId: conversationId || undefined,
+        prompt,
+        targetUrl: selectedTarget,
+        providerId,
+        model,
+      },
+    );
+    setTargetUrl(selectedTarget);
+    setPrompt("");
+    setPendingTarget("");
+    await loadLists();
+    await loadConversation(response.conversationId);
+  }
   async function send() {
     await task(async () => {
       const promptUrl = prompt
         .match(/https?:\/\/[^\s<>"']+/i)?.[0]
         .replace(/[),.;!?]+$/g, "");
       const selectedTarget = promptUrl ?? targetUrl;
-      const response = await api<{ conversationId: string }>(
-        `${root}/messages`,
-        "POST",
-        {
-          conversationId: conversationId || undefined,
-          prompt,
-          targetUrl: selectedTarget,
-          providerId,
-          model,
-        },
-      );
-      setTargetUrl(selectedTarget);
-      setPrompt("");
-      await loadLists();
-      await loadConversation(response.conversationId);
+      try {
+        await submitPrompt(selectedTarget);
+      } catch (error) {
+        if (error instanceof ApiError && error.code === "TARGET_BLOCKED")
+          setPendingTarget(selectedTarget);
+        throw error;
+      }
+    });
+  }
+  async function authorizeAndSend() {
+    await task(async () => {
+      await api("/v1/ai/authorized-origins", "POST", {
+        url: pendingTarget,
+      });
+      await submitPrompt(pendingTarget);
     });
   }
   async function saveDraft(id: string) {
@@ -235,6 +254,7 @@ export function AiAssistant({
                 setMessages([]);
                 setDrafts([]);
                 setRun(null);
+                setPendingTarget("");
               }}
             >
               <Plus size={16} /> Yeni konuşma
@@ -435,6 +455,32 @@ export function AiAssistant({
                 {error}
               </p>
             )}
+            {pendingTarget.startsWith("https://") && canEdit && (
+              <div className="ai-authorize">
+                {authorizedOrigins.some(
+                  (site) => site.origin === new URL(pendingTarget).origin,
+                ) ? (
+                  <span>
+                    Site listede kayıtlı. Kodu güncelledikten sonra çalışan
+                    sunucuyu bir kez yeniden başlat.
+                  </span>
+                ) : (
+                  <>
+                    <span>
+                      {new URL(pendingTarget).origin} henüz yetkili hedeflerde
+                      yok.
+                    </span>
+                    <button
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => void authorizeAndSend()}
+                    >
+                      Siteyi ekle ve tekrar gönder
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
             {notice && <p role="status">{notice}</p>}
             <div className="ai-composer">
               <label>
@@ -442,14 +488,20 @@ export function AiAssistant({
                 <input
                   aria-label="Hedef URL"
                   value={targetUrl}
-                  onChange={(e) => setTargetUrl(e.target.value)}
+                  onChange={(e) => {
+                    setTargetUrl(e.target.value);
+                    setPendingTarget("");
+                  }}
                 />
               </label>
               <textarea
                 aria-label="Test isteği"
                 rows={3}
                 value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
+                onChange={(e) => {
+                  setPrompt(e.target.value);
+                  setPendingTarget("");
+                }}
                 placeholder="Örnek: Login sayfasını analiz et; pozitif, negatif ve sınır senaryolarını hazırla."
               />
               <button

@@ -1,5 +1,14 @@
 # Devam noktası — 19 Ekim 2026
 
+## 20 Ekim 2026 — Chat'ten hedef yetkilendirme
+
+`TARGET_BLOCKED` hatasında chat, HTTPS hedefi için **Siteyi ekle ve tekrar
+gönder** eylemi sunuyor. Kullanıcı açıkça tıklayınca origin aynı Ayarlar
+listesine yazılıyor ve kaybolmayan prompt tekrar gönderiliyor. Site zaten
+listede görünürse eski API sürecinin yeniden başlatılması gerektiği belirtiliyor.
+Browser E2E, engellenen hedefi, chat içi yetkilendirmeyi ve listeye kalıcı
+kaydı doğruluyor; harici sayfa taraması ağ politikası nedeniyle doğrulanmadı.
+
 ## 20 Ekim 2026 — Yerel provider verisinin kalıcılığı
 
 Önceki demo komutu her çalıştırmada yeni `/tmp/zerocode-demo.*` dizini

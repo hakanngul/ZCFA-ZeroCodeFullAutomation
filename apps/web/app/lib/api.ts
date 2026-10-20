@@ -1,3 +1,12 @@
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+  ) {
+    super(`${message} (${code})`);
+  }
+}
+
 export async function api<T>(
   path: string,
   method = "GET",
@@ -16,8 +25,9 @@ export async function api<T>(
   });
   const result = await response.json();
   if (!response.ok)
-    throw new Error(
-      `${result.message ?? "İşlem başarısız."} (${result.code ?? response.status})`,
+    throw new ApiError(
+      result.message ?? "İşlem başarısız.",
+      result.code ?? String(response.status),
     );
   return result as T;
 }

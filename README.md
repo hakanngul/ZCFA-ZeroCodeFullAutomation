@@ -97,7 +97,9 @@ Kalıcı ortamlarda 32 bayt base64
 anahtarlarını okunamaz yapar.
 
 Chat'te hedef URL ve test isteği gönderilir; URL doğrudan prompt'ta yazılırsa
-hedef alanına da uygulanır. Ayrı worker gerçek Chromium ile
+hedef alanına da uygulanır. Hedef henüz yetkili değilse chat, düzenleme yetkisi olan kullanıcıya
+**Siteyi ekle ve tekrar gönder** seçeneği sunar; HTTPS origin listeye kaydedilip
+aynı istek yeniden gönderilir. Ayrı worker gerçek Chromium ile
 hedef sayfanın DOM öğelerini pasif inceler, seçilen modele gözlemleri gönderir.
 Model yalnız gözlenen locator'larla yapılandırılmış suite taslağı döndürebilir.
 Taslak JSON olarak düzenlenir, insan onayıyla kaydedilir; `Testler` ekranındaki

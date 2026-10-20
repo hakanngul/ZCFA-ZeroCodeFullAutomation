@@ -11,6 +11,8 @@ harici site erişimi bu koşuda kullanılmadı.
   harici site bu koşuda taranmadı.
 - `chat-empty.png`: provider/model yüklendikten sonraki temiz chat ekranı.
 - `chat.png`: prompt, suite taslağı ve PASS sonucunu içeren tam chat akışı.
+- `authorize.png`: engellenen HTTPS hedef için chat içinden açık site ekleme
+  ve tekrar gönderme eylemi; E2E düğmeye basıp origin kaydını da doğruladı.
 - `suite.png`: DOM incelemesi, onaylanan suite, PASS sonucu ve chat geçmişi.
 - `tests-list.png`: AI suite'in Testler ekranında görünmesi.
 - `mobile.png`: 390px responsive chat ve suite kontrolü.
@@ -22,6 +24,7 @@ Ekran görüntüleri `test-results/assistant/` kaynaklarından kopyalandı.
 
 | Dosya          | SHA-256                                                            |
 | -------------- | ------------------------------------------------------------------ |
+| authorize.png  | `b031233d03d94a8e4f56b1c3ca5e77ea964f6390e817ac009fca242e56af582f` |
 | chat-empty.png | `9693d56b71f3107038454aed28affffe382118b0826cfa38c5f3d12dc19b7c42` |
 | chat.png       | `4e9592bba8034c604bd8891711841024e8d9723c8998b7099822e3807253aa1a` |
 | mobile.png     | `e1469b8066b46507945e83441b96b444006f5e068fa2f18e5faf1a4930a01f9e` |

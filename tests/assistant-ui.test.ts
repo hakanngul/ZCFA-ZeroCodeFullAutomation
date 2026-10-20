@@ -242,6 +242,35 @@ test(
         path: join(evidence, "mobile.png"),
         fullPage: true,
       });
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await page.getByRole("button", { name: "Yeni konuşma" }).click();
+      await page
+        .getByRole("textbox", { name: "Hedef URL" })
+        .fill("https://example.com/");
+      await page
+        .getByRole("textbox", { name: "Test isteği" })
+        .fill("Giriş formunu analiz et ve negatif suite hazırla.");
+      await page.getByRole("button", { name: "Gönder" }).click();
+      await page
+        .getByRole("button", { name: "Siteyi ekle ve tekrar gönder" })
+        .waitFor();
+      await page.screenshot({
+        path: join(evidence, "authorize.png"),
+        fullPage: true,
+      });
+      await page
+        .getByRole("button", { name: "Siteyi ekle ve tekrar gönder" })
+        .click();
+      await page.waitForFunction(
+        () =>
+          (
+            document.querySelector(
+              'textarea[aria-label="Test isteği"]',
+            ) as HTMLTextAreaElement
+          )?.value === "",
+      );
+      await page.getByRole("button", { name: "Ayarlar", exact: true }).click();
+      await page.getByText("https://example.com", { exact: true }).waitFor();
       assert.deepEqual(errors, []);
     } finally {
       await browser?.close();
