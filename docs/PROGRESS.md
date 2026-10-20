@@ -1,5 +1,11 @@
 # Devam noktası — 19 Ekim 2026
 
+## 20 Ekim 2026 — Yerel arayüz 5000 portunda
+
+3000 portu kullanıcının ortamında dolu olduğu için `pnpm dev` web arayüzünü
+5000 portunda açıyor. API, 5000 kaynaklı yerel UI isteklerini kabul ediyor;
+ayrı E2E sunucusu 3000 portundaki önceki akışla çalışmaya devam ediyor.
+
 ## 20 Ekim 2026 — AI ayarları ve chat ekran kanıtı
 
 Provider, Base URL ve API anahtarı formu chat içindeki pencereden çıkarılıp

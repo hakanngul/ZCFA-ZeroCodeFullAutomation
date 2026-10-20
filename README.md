@@ -27,7 +27,7 @@ pnpm install --frozen-lockfile --store-dir /workspace/.cache/pnpm-store
 pnpm dev
 ```
 
-UI 3000, API 4000, demo hedef 4100 portunda **127.0.0.1'e bağlıdır**. Supervisor
+UI 5000, API 4000, demo hedef 4100 portunda **127.0.0.1'e bağlıdır**. Supervisor
 dört süreci birlikte açar; Ctrl+C yalnız başlattığı süreç gruplarını durdurur.
 Bu ortamın onboarding arayüzünde localhost önizleme bağlantısı desteklenmez.
 Servisler yerel HTTP istekleri ve gerçek browser testleriyle doğrulanır.
@@ -44,7 +44,7 @@ PASS/FAIL yanıtı üretmez. Run ekranındaki ayrıntı düğmesi kanıtı açar
 pnpm typecheck
 pnpm test
 pnpm build
-# pnpm dev durmuş olmalı; 3000, 4000, 4100 portları boş olmalı.
+# pnpm dev durmuş olmalı; E2E için 3000, 4000, 4100 portları boş olmalı.
 pnpm test:e2e
 ```
 

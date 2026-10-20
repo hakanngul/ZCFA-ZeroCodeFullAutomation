@@ -23,7 +23,12 @@ import {
   type RunOutcome,
 } from "../../../packages/domain/src/index";
 
-const uiOrigins = new Set(["http://127.0.0.1:3000", "http://localhost:3000"]);
+const uiOrigins = new Set(
+  [3000, 5000].flatMap((port) => [
+    `http://127.0.0.1:${port}`,
+    `http://localhost:${port}`,
+  ]),
+);
 const projectParams = z.object({ projectId: z.uuid() });
 export async function createApp(store = new Store()) {
   const app = Fastify({
