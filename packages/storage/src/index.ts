@@ -37,6 +37,7 @@ export type Job = {
     | "locator_check"
     | "ai_analysis"
     | "ai_generate"
+    | "ai_plan"
     | "ai_suite"
     | "ai_test_run"
     | "case_run";
@@ -58,9 +59,9 @@ export type Run = {
   finished_at: string | null;
 };
 
-/** ai_analysis jobs share the draft id; ai_generate carries it in the payload. */
+/** ai_analysis jobs share the draft id; ai_generate / ai_plan carry it in the payload. */
 export function draftIdOf(job: Pick<Job, "id" | "kind" | "payload">) {
-  if (job.kind !== "ai_generate") return job.id;
+  if (job.kind !== "ai_generate" && job.kind !== "ai_plan") return job.id;
   try {
     return String((JSON.parse(job.payload) as { draftId?: unknown }).draftId);
   } catch {
@@ -226,6 +227,12 @@ export class Store {
           "../../../infra/migrations/013_test_cases.sql",
           import.meta.url,
         ),
+        "utf8",
+      ),
+    );
+    this.db.exec(
+      readFileSync(
+        new URL("../../../infra/migrations/014_ai_plans.sql", import.meta.url),
         "utf8",
       ),
     );
@@ -466,7 +473,7 @@ export class Store {
   failDraft(draftId: string, orgId: string, code: string) {
     this.db
       .prepare(
-        "UPDATE ai_drafts SET status='failed',error_code=? WHERE id=? AND org_id=? AND status IN ('queued','running','explored','generating')",
+        "UPDATE ai_drafts SET status='failed',error_code=? WHERE id=? AND org_id=? AND status IN ('queued','running','explored','planning','planned','generating')",
       )
       .run(code, draftId, orgId);
     this.db
@@ -508,7 +515,11 @@ export class Store {
               job.id,
               job.org_id,
             );
-        else if (job.kind === "ai_analysis" || job.kind === "ai_generate")
+        else if (
+          job.kind === "ai_analysis" ||
+          job.kind === "ai_generate" ||
+          job.kind === "ai_plan"
+        )
           this.failDraft(draftIdOf(job), job.org_id, "WORKER_LEASE_EXPIRED");
         else if (job.kind === "ai_suite")
           this.db
@@ -576,6 +587,14 @@ export class Store {
         this.db
           .prepare(
             "UPDATE ai_drafts SET status='generating' WHERE id=? AND org_id=? AND status='explored'",
+          )
+          .run(draftIdOf(job), job.org_id);
+        return { ...job, lease_token: token, lease_until: until };
+      }
+      if (job.kind === "ai_plan") {
+        this.db
+          .prepare(
+            "UPDATE ai_drafts SET status='planning' WHERE id=? AND org_id=? AND status='explored'",
           )
           .run(draftIdOf(job), job.org_id);
         return { ...job, lease_token: token, lease_until: until };

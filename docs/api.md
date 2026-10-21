@@ -62,48 +62,49 @@ uygulamayı açtığı anlamına gelmez: deneme canlı yerel demo hedefinde yap�
 
 ## AI Assistant ve suite
 
-| Metot      | Yol                                                                | Sonuç                                                                         |
-| ---------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| GET/POST   | /v1/ai/providers                                                   | Anahtarsız liste / şifreli provider kaydı                                     |
-| PUT/DELETE | /v1/ai/providers/:id                                               | Provider düzenle / sil                                                        |
-| POST       | /v1/ai/providers/:id/activate                                      | Aktif provider seç                                                            |
-| POST       | /v1/ai/providers/connection                                        | Gerçek chat completion bağlantı testi                                         |
-| POST       | /v1/ai/providers/models                                            | Gerçek model listesi                                                          |
-| GET        | /v1/ai/providers/:id/models                                        | Kayıtlı provider'ın model listesi (anahtar sunucuda kalır)                    |
-| GET/POST   | /v1/ai/authorized-origins                                          | Yetkili HTTPS hedefleri listele / ekle                                        |
-| GET        | /v1/projects/:projectId/ai/elements                                | AI ile gözlenen sayfa elementleri                                             |
-| GET        | /v1/projects/:projectId/ai/elements/:id                            | Kütüphane elementi ve değişmez geçmişi                                        |
-| PUT        | /v1/projects/:projectId/ai/elements/:id                            | Ad/anahtar/sayfa/locator/onay (`expectedRevision`, 409)                       |
-| POST       | /v1/projects/:projectId/ai/elements/:id/suggestions/accept         | Önerilen alternatifi ekle (`expectedRevision`, onay korunur)                  |
-| GET        | /v1/projects/:projectId/ai/elements/:id/impact                     | Son sürümü eski revizyonu pinleyen kalıcı testler + fark (ADR 015)            |
-| POST       | /v1/projects/:projectId/ai/elements/:id/merge                      | Onaysız kopyayı hedefe birleştir (`expectedRevision`, `targetId`, ADR 016)    |
-| GET/PUT    | /v1/projects/:projectId/settings                                   | Proje ayarları: `selfHealing` (varsayılan kapalı, ADR 016)                    |
-| GET        | /v1/projects/:projectId/ai/heal-suggestions                        | Self-healing önerileri (`status=pending\|promoted\|ignored`)                  |
-| POST       | /v1/projects/:projectId/ai/heal-suggestions/:id/promote            | "Birincil yap": iyileşen locator birincil, yeni revizyon (`expectedRevision`) |
-| POST       | /v1/projects/:projectId/ai/heal-suggestions/:id/ignore             | "Yoksay": öneriyi kapat, element değişmez                                     |
-| DELETE     | /v1/ai/authorized-origins/:id                                      | Yetkili hedefi kaldır                                                         |
-| GET        | /v1/projects/:projectId/ai/conversations                           | Konuşma geçmişi                                                               |
-| GET        | /v1/projects/:projectId/ai/conversations/:id                       | Mesaj, taslak ve çalışma geçmişi                                              |
-| POST       | /v1/projects/:projectId/ai/messages                                | Prompt → kuyruklu browser incelemesi ve AI taslağı                            |
-| POST       | /v1/projects/:projectId/ai/comparisons                             | 2–3 model (`models: [{providerId, model}]`): tek keşif, model başına üretim   |
-| GET        | /v1/projects/:projectId/ai/comparisons/:id                         | Model başına şema/sayım/kırılgan locator/süre/token ve son çalıştırma         |
-| GET        | /v1/projects/:projectId/ai/suites                                  | Onaylanan suite listesi                                                       |
-| POST       | /v1/projects/:projectId/ai/drafts/:id/save                         | Düzenlenen suite'i insan onayıyla kaydet                                      |
-| POST       | /v1/projects/:projectId/ai/suites/:id/revise                       | Suite'i yeni taslak olarak aç                                                 |
-| POST       | /v1/projects/:projectId/ai/suites/:id/runs                         | Ayrı worker'da gerçek suite çalıştırma                                        |
-| GET        | /v1/projects/:projectId/ai/runs/:id                                | Durum ve senaryo sonuçları                                                    |
-| GET        | /v1/projects/:projectId/ai/runs/:id/screenshots/:index             | Auth/org/checksum kontrollü PNG                                               |
-| GET        | /v1/projects/:projectId/ai/runs/:id/screenshots/:index/steps/:step | Adım bazında auth/org/checksum kontrollü PNG                                  |
-| POST       | /v1/projects/:projectId/ai/suites/:id/promote                      | Onaylı suite → değişmez, sürümlü kalıcı test (201 yeni / 200 mevcut)          |
-| GET        | /v1/projects/:projectId/ai/tests                                   | Kalıcı AI test sürümleri (origin yetkisi dahil)                               |
-| GET        | /v1/projects/:projectId/ai/tests/:id/versions/:revision            | Sürüm tanımı + checksum                                                       |
-| POST       | /v1/projects/:projectId/ai/tests/:id/versions                      | Güncel onaylı element revizyonlarıyla yeni sürüm (`expectedRevision`, 409)    |
-| POST       | /v1/projects/:projectId/ai/tests/:id/runs                          | Sürümü plan snapshot + checksum ile kuyruğa al                                |
-| GET        | /v1/projects/:projectId/ai/test-runs                               | Kalıcı test çalıştırmaları                                                    |
-| GET        | /v1/projects/:projectId/ai/test-runs/:id                           | Plan, durum, senaryo sonuçları                                                |
-| GET        | /v1/projects/:projectId/ai/test-runs/:id/screenshots/:index        | Auth/org/checksum kontrollü PNG                                               |
-| GET/POST   | /v1/projects/:projectId/test-variables                             | Test verileri; gizli değer yanıtta `null`                                     |
-| PUT/DELETE | /v1/projects/:projectId/test-variables/:id                         | Güncelle (boş değer = koru) / sil                                             |
+| Metot      | Yol                                                                | Sonuç                                                                           |
+| ---------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| GET/POST   | /v1/ai/providers                                                   | Anahtarsız liste / şifreli provider kaydı                                       |
+| PUT/DELETE | /v1/ai/providers/:id                                               | Provider düzenle / sil                                                          |
+| POST       | /v1/ai/providers/:id/activate                                      | Aktif provider seç                                                              |
+| POST       | /v1/ai/providers/connection                                        | Gerçek chat completion bağlantı testi                                           |
+| POST       | /v1/ai/providers/models                                            | Gerçek model listesi                                                            |
+| GET        | /v1/ai/providers/:id/models                                        | Kayıtlı provider'ın model listesi (anahtar sunucuda kalır)                      |
+| GET/POST   | /v1/ai/authorized-origins                                          | Yetkili HTTPS hedefleri listele / ekle                                          |
+| GET        | /v1/projects/:projectId/ai/elements                                | AI ile gözlenen sayfa elementleri                                               |
+| GET        | /v1/projects/:projectId/ai/elements/:id                            | Kütüphane elementi ve değişmez geçmişi                                          |
+| PUT        | /v1/projects/:projectId/ai/elements/:id                            | Ad/anahtar/sayfa/locator/onay (`expectedRevision`, 409)                         |
+| POST       | /v1/projects/:projectId/ai/elements/:id/suggestions/accept         | Önerilen alternatifi ekle (`expectedRevision`, onay korunur)                    |
+| GET        | /v1/projects/:projectId/ai/elements/:id/impact                     | Son sürümü eski revizyonu pinleyen kalıcı testler + fark (ADR 015)              |
+| POST       | /v1/projects/:projectId/ai/elements/:id/merge                      | Onaysız kopyayı hedefe birleştir (`expectedRevision`, `targetId`, ADR 016)      |
+| GET/PUT    | /v1/projects/:projectId/settings                                   | Proje ayarları: `selfHealing` (varsayılan kapalı, ADR 016)                      |
+| GET        | /v1/projects/:projectId/ai/heal-suggestions                        | Self-healing önerileri (`status=pending\|promoted\|ignored`)                    |
+| POST       | /v1/projects/:projectId/ai/heal-suggestions/:id/promote            | "Birincil yap": iyileşen locator birincil, yeni revizyon (`expectedRevision`)   |
+| POST       | /v1/projects/:projectId/ai/heal-suggestions/:id/ignore             | "Yoksay": öneriyi kapat, element değişmez                                       |
+| DELETE     | /v1/ai/authorized-origins/:id                                      | Yetkili hedefi kaldır                                                           |
+| GET        | /v1/projects/:projectId/ai/conversations                           | Konuşma geçmişi                                                                 |
+| GET        | /v1/projects/:projectId/ai/conversations/:id                       | Mesaj, taslak ve çalışma geçmişi                                                |
+| POST       | /v1/projects/:projectId/ai/messages                                | Prompt → kuyruklu browser incelemesi ve AI taslağı                              |
+| POST       | /v1/projects/:projectId/ai/drafts/:id/generate                     | Plandan seçilen öneriler (`items` ≤10, `instruction?`) → test üretimi (ADR 018) |
+| POST       | /v1/projects/:projectId/ai/comparisons                             | 2–3 model (`models: [{providerId, model}]`): tek keşif, model başına üretim     |
+| GET        | /v1/projects/:projectId/ai/comparisons/:id                         | Model başına şema/sayım/kırılgan locator/süre/token ve son çalıştırma           |
+| GET        | /v1/projects/:projectId/ai/suites                                  | Onaylanan suite listesi                                                         |
+| POST       | /v1/projects/:projectId/ai/drafts/:id/save                         | Düzenlenen suite'i insan onayıyla kaydet                                        |
+| POST       | /v1/projects/:projectId/ai/suites/:id/revise                       | Suite'i yeni taslak olarak aç                                                   |
+| POST       | /v1/projects/:projectId/ai/suites/:id/runs                         | Ayrı worker'da gerçek suite çalıştırma                                          |
+| GET        | /v1/projects/:projectId/ai/runs/:id                                | Durum ve senaryo sonuçları                                                      |
+| GET        | /v1/projects/:projectId/ai/runs/:id/screenshots/:index             | Auth/org/checksum kontrollü PNG                                                 |
+| GET        | /v1/projects/:projectId/ai/runs/:id/screenshots/:index/steps/:step | Adım bazında auth/org/checksum kontrollü PNG                                    |
+| POST       | /v1/projects/:projectId/ai/suites/:id/promote                      | Onaylı suite → değişmez, sürümlü kalıcı test (201 yeni / 200 mevcut)            |
+| GET        | /v1/projects/:projectId/ai/tests                                   | Kalıcı AI test sürümleri (origin yetkisi dahil)                                 |
+| GET        | /v1/projects/:projectId/ai/tests/:id/versions/:revision            | Sürüm tanımı + checksum                                                         |
+| POST       | /v1/projects/:projectId/ai/tests/:id/versions                      | Güncel onaylı element revizyonlarıyla yeni sürüm (`expectedRevision`, 409)      |
+| POST       | /v1/projects/:projectId/ai/tests/:id/runs                          | Sürümü plan snapshot + checksum ile kuyruğa al                                  |
+| GET        | /v1/projects/:projectId/ai/test-runs                               | Kalıcı test çalıştırmaları                                                      |
+| GET        | /v1/projects/:projectId/ai/test-runs/:id                           | Plan, durum, senaryo sonuçları                                                  |
+| GET        | /v1/projects/:projectId/ai/test-runs/:id/screenshots/:index        | Auth/org/checksum kontrollü PNG                                                 |
+| GET/POST   | /v1/projects/:projectId/test-variables                             | Test verileri; gizli değer yanıtta `null`                                       |
+| PUT/DELETE | /v1/projects/:projectId/test-variables/:id                         | Güncelle (boş değer = koru) / sil                                               |
 
 ## Tests: suite ve test case (ADR 017)
 
@@ -123,6 +124,11 @@ uygulamayı açtığı anlamına gelmez: deneme canlı yerel demo hedefinde yap�
 | GET      | /v1/projects/:projectId/test-case-runs/:id/screenshot             | Senaryo sonu PNG (auth/org/SHA-256 kontrollü)                                                           |
 | GET      | /v1/projects/:projectId/test-case-runs/:id/steps/:step/screenshot | Adım PNG (auth/org/SHA-256 kontrollü)                                                                   |
 | GET      | /v1/projects/:projectId/ai/elements/:id/usage                     | Elementi kullanan case'ler: adım numaraları, pinli/güncel revizyon, `stale`                             |
+
+`POST …/ai/messages` `mode: "plan"` ile önce sitenin ana özelliklerini keşfeder
+ve test planı önerir (taslak `planned`, `plan.items`); test ve element ancak
+`…/drafts/:id/generate` ile oluşur. `mode` verilmezse (`suite`) test hemen
+üretilir.
 
 Case adımı `{id, kind, elementId?, value?, expected?, url?}`; `kind` =
 `navigate`, `click`, `fill`, `select`, `assertVisible`, `assertText`,

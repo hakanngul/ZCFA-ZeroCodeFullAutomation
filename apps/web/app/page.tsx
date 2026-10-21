@@ -726,6 +726,7 @@ export default function Workspace() {
               projectId={projectId}
               canEdit={actor.role !== "viewer"}
               mode="chat"
+              onOpenTests={() => setSection("tests")}
             />
           )}
           {section === "settings" && (

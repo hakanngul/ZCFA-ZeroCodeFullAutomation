@@ -187,3 +187,52 @@ export const aiSuiteSchema = z
   })
   .strict();
 export type AiSuite = z.infer<typeof aiSuiteSchema>;
+
+/**
+ * Test plan proposed after a survey exploration (ADR 018): what the AI
+ * would test, before any case or library element is created.
+ */
+export const planLimits = { items: 20, selected: suiteLimits.scenarios };
+export const aiTestPlanItemSchema = z
+  .object({
+    title: z.string().trim().min(3).max(suiteLimits.scenarioTitleLength),
+    category: z.enum(["positive", "negative", "edge"]),
+    area: z.string().trim().min(1).max(60),
+    description: z.string().trim().max(500),
+    pages: z.array(z.string().max(1000)).max(8).default([]),
+    testData: z.array(z.string().trim().min(1).max(120)).max(10).default([]),
+    feasible: z.boolean().default(true),
+    note: z.string().trim().max(300).optional(),
+  })
+  .strict();
+export type AiTestPlanItem = z.infer<typeof aiTestPlanItemSchema>;
+export const aiTestPlanSchema = z
+  .object({
+    summary: z.string().trim().min(1).max(1000),
+    items: z.array(aiTestPlanItemSchema).min(1).max(planLimits.items),
+  })
+  .strict();
+export type AiTestPlan = z.infer<typeof aiTestPlanSchema>;
+/** Items a person selected (and possibly edited) for generation. */
+export const planSelectionSchema = z
+  .object({
+    items: z
+      .array(
+        z
+          .object({
+            title: z
+              .string()
+              .trim()
+              .min(3)
+              .max(suiteLimits.scenarioTitleLength),
+            category: z.enum(["positive", "negative", "edge"]),
+            description: z.string().trim().max(500).default(""),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(planLimits.selected),
+    instruction: z.string().trim().max(1000).optional(),
+  })
+  .strict();
+export type PlanSelection = z.infer<typeof planSelectionSchema>;

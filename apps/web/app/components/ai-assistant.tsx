@@ -7,6 +7,7 @@ import { SelfHealingSetting } from "./self-healing-setting";
 import { TestVariables } from "./test-variables";
 import { QualityFindings, type Findings } from "./quality-findings";
 import { ModelComparison, type Comparison } from "./model-comparison";
+import { PlanCard, type PlanSelection, type TestPlan } from "./plan-card";
 import "../assistant.css";
 
 type Provider = {
@@ -51,6 +52,8 @@ type Draft = {
     stopped?: { reason: string; message: string; step?: ExplorationStep };
   } | null;
   definition: AiSuite | null;
+  /** Survey test plan (ADR 018); null for direct suite drafts. */
+  plan?: TestPlan | null;
   /** Library keys used by the draft → name (null: not in the library). */
   elementRefs?: Record<
     string,
@@ -93,6 +96,8 @@ function actionText(action: SuiteAction, refs: ElementRefs) {
 const draftTitles: Record<string, string> = {
   queued: "Sıraya alındı…",
   running: "Sayfa keşfediliyor…",
+  planning: "Keşif tamamlandı, test planı hazırlanıyor…",
+  planned: "Test planı hazır",
   explored: "Keşif tamamlandı, senaryolar üretiliyor…",
   generating: "Keşif tamamlandı, senaryolar üretiliyor…",
   ready: "Senaryo taslağı",
@@ -166,16 +171,20 @@ const initial = {
   baseUrl: "",
   apiKey: "",
   model: "",
-  timeoutMs: 15000,
+  // Suite generation can take a minute on larger sites.
+  timeoutMs: 90000,
 };
 export function AiAssistant({
   projectId,
   canEdit,
   mode,
+  onOpenTests,
 }: {
   projectId: string;
   canEdit: boolean;
   mode: "chat" | "settings";
+  /** Opens Tests, where generated suites are saved as drafts. */
+  onOpenTests?: () => void;
 }) {
   const root = `/v1/projects/${projectId}/ai`;
   const [providers, setProviders] = useState<Provider[]>([]),
@@ -200,6 +209,8 @@ export function AiAssistant({
     [suiteJson, setSuiteJson] = useState(""),
     [run, setRun] = useState<Run | null>(null),
     [comparison, setComparison] = useState<Comparison | null>(null);
+  // Survey + test plan first; tests only after "Testleri oluştur" (ADR 018).
+  const [planFirst, setPlanFirst] = useState(true);
   const [compareMode, setCompareMode] = useState(false),
     [compareEntries, setCompareEntries] = useState<CompareEntry[]>([]),
     [providerModels, setProviderModels] = useState<Record<string, string[]>>(
@@ -298,6 +309,7 @@ export function AiAssistant({
         targetUrl: selectedTarget,
         providerId,
         model,
+        mode: planFirst ? "plan" : "suite",
       },
     );
     setTargetUrl(selectedTarget);
@@ -390,6 +402,19 @@ export function AiAssistant({
       );
       setRun({ id: result.id, status: "queued", result: null });
       if (conversationId) await loadConversation(conversationId);
+    });
+  }
+  async function generateFromPlan(id: string, selection: PlanSelection) {
+    await task(async () => {
+      const response = await api<{ conversationId: string }>(
+        `${root}/drafts/${id}/generate`,
+        "POST",
+        selection,
+      );
+      await loadConversation(response.conversationId);
+      setNotice(
+        `${selection.items.length} test yazılıyor; bitince Testler ekranında taslak suite olarak görünecek.`,
+      );
     });
   }
   async function revise(id: string) {
@@ -574,6 +599,26 @@ export function AiAssistant({
                           )}
                       </>
                     )}
+                  {d.plan && (
+                    <PlanCard
+                      key={`${d.id}:${d.status === "planned"}`}
+                      plan={d.plan}
+                      status={d.status}
+                      busy={
+                        busy ||
+                        !["planned", "ready", "failed"].includes(d.status)
+                      }
+                      canEdit={canEdit}
+                      onGenerate={(selection) =>
+                        void generateFromPlan(d.id, selection)
+                      }
+                    />
+                  )}
+                  {d.definition && d.plan && onOpenTests && (
+                    <button className="secondary" onClick={onOpenTests}>
+                      Testler'de aç
+                    </button>
+                  )}
                   {d.definition && (
                     <>
                       <h3>{d.definition.title}</h3>
@@ -764,6 +809,17 @@ export function AiAssistant({
                     setPendingTarget("");
                   }}
                 />
+              </label>
+              <label className="ai-compare-toggle">
+                <input
+                  type="checkbox"
+                  aria-label="Önce analiz et ve test planı öner"
+                  checked={planFirst && !compareMode}
+                  disabled={compareMode}
+                  onChange={(e) => setPlanFirst(e.target.checked)}
+                />
+                Önce siteyi analiz et ve test planı öner (testleri sen seçince
+                oluştur)
               </label>
               <label className="ai-compare-toggle">
                 <input

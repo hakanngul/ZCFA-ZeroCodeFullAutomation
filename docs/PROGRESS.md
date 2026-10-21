@@ -1,5 +1,35 @@
 # Devam noktası — 19 Ekim 2026
 
+## 22 Ekim 2026 — Keşif önce test planı önerir; testler seçimle oluşur
+
+ADR 018. Sohbetteki "Önce siteyi analiz et ve test planı öner" kutusu
+varsayılan olarak işaretli.
+
+- **Keşif ve plan:** Keşif sitenin ana özelliklerini dolaşır (`survey`).
+  Ardından `ai_plan` işi en fazla 15 öneri içeren bir test planı yazar:
+  başlık, tür, alan, açıklama, sayfalar, gereken veri ve uygulanabilirlik.
+  Plan `ai_draft_plans` tablosunda saklanır (migration 014).
+- **Bu aşamada:** Hiçbir test ya da element oluşmaz.
+- **Seçim:** Kullanıcı en fazla 10 öneri seçer; başlık, açıklama ve ek notu
+  düzenleyebilir.
+- **"Testleri oluştur":** `POST …/ai/drafts/:id/generate`, mevcut keşfi
+  kullanarak yalnız seçilenleri yazar. Elementler ve taslak suite ADR 017'deki
+  gibi oluşur.
+- **API uyumu:** API'de `mode` verilmezse eski davranış (hemen suite) korunur.
+- **Zaman aşımı:** Provider formunda varsayılan 90 sn. 15 sn, SauceDemo
+  üretiminde `PROVIDER_TIMEOUT` veriyordu.
+
+Doğrulama: typecheck, format:check, `pnpm test` 48/48, build, `test:e2e`
+13/13.
+
+- **API testi:** Plan modunda taslak `planned` oluyor; tanım ve element
+  oluşmuyor, gözlenmeyen sayfa plandan atılıyor. Plansız taslakta
+  `PLAN_MISSING` dönüyor. Seçimle üretilen suite oluşuyor ve element sayısı
+  değişmiyor.
+- **UI testi:** Plan kartı → "Testleri oluştur (1)" → "Testler'de aç".
+- **Kanıt:** `docs/evidence/test-cases/fixture-plan.png` ve
+  `fixture-plan-suite.png`.
+
 ## 21 Ekim 2026 — Keşiften kalıcı taslak suite; adımlar elementlere id ile bağlı
 
 ADR 017. Ayrışma noktaları:

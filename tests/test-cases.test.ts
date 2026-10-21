@@ -518,6 +518,39 @@ test(
       const system = body.messages[0]?.content ?? "";
       if (system === "Reply OK")
         return { choices: [{ message: { content: "OK" } }] };
+      if (system.startsWith("You analyze"))
+        return {
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  summary: "Giriş ve dashboard incelendi.",
+                  items: [
+                    {
+                      title: "Geçerli giriş bakiyeyi gösterir",
+                      category: "positive",
+                      area: "Giriş",
+                      description: "Giriş yapılır, bakiye görünür.",
+                      pages: [
+                        "http://127.0.0.1:4100/login",
+                        "http://127.0.0.1:4100/unseen",
+                      ],
+                      testData: ["E-posta", "Parola"],
+                      feasible: true,
+                    },
+                    {
+                      title: "Hatalı giriş uyarı verir",
+                      category: "negative",
+                      area: "Giriş",
+                      description: "Yanlış parola reddedilir.",
+                      feasible: true,
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        };
       if (system.startsWith("You explore")) {
         const state = JSON.parse(body.messages[1]!.content) as {
           path: unknown[];
@@ -817,6 +850,91 @@ test(
         reusedIds.every((id: string) => ids.has(id)),
         true,
       );
+
+      // Plan mode (ADR 018): survey + proposed plan; nothing is created until
+      // the selected items are generated.
+      const plannedQueued = await call("POST", `${root}/ai/messages`, {
+        prompt:
+          "Demo Bank'ı qa@example.test ve local-fixture-only ile incele, test öner",
+        targetUrl: "http://127.0.0.1:4100/login",
+        providerId: saved.body.id,
+        model: "fake-model",
+        mode: "plan",
+      });
+      assert.equal(plannedQueued.status, 202);
+      const planned = await until(async () => {
+        const detail = (
+          await call(
+            "GET",
+            `${root}/ai/conversations/${plannedQueued.body.conversationId}`,
+          )
+        ).body;
+        const draft = detail.drafts[0];
+        return ["planned", "failed"].includes(draft?.status) ? detail : null;
+      }, 90000);
+      const plannedDraft = planned.drafts[0];
+      assert.equal(plannedDraft.status, "planned");
+      assert.equal(plannedDraft.definition, null);
+      assert.equal(plannedDraft.plan.items.length, 2);
+      // Pages that were not observed are dropped from the plan.
+      assert.deepEqual(plannedDraft.plan.items[0].pages, [
+        "http://127.0.0.1:4100/login",
+      ]);
+      assert.ok(
+        planned.messages.some((m: { content: string }) =>
+          m.content.includes("2 test öneriyorum"),
+        ),
+      );
+      assert.equal((await call("GET", `${root}/ai/elements`)).body.total, 5);
+      assert.equal(
+        (await call("GET", `${root}/test-suites`)).body.suites.length,
+        2,
+      );
+      const noPlan = await call(
+        "POST",
+        `${root}/ai/drafts/${second.drafts[0].id}/generate`,
+        { items: [{ title: "Bir test", category: "positive" }] },
+      );
+      assert.equal(noPlan.body.code, "PLAN_MISSING");
+      const generate = await call(
+        "POST",
+        `${root}/ai/drafts/${plannedDraft.id}/generate`,
+        {
+          items: [
+            {
+              title: "Geçerli giriş bakiyeyi gösterir",
+              category: "positive",
+              description: "Giriş yapılır, bakiye görünür.",
+            },
+          ],
+        },
+      );
+      assert.equal(generate.status, 202);
+      assert.equal(generate.body.draftId, plannedDraft.id);
+      const generated = await until(async () => {
+        const detail = (
+          await call(
+            "GET",
+            `${root}/ai/conversations/${plannedQueued.body.conversationId}`,
+          )
+        ).body;
+        const draft = detail.drafts.find(
+          (d: { id: string }) => d.id === plannedDraft.id,
+        );
+        return ["ready", "failed"].includes(draft?.status) ? draft : null;
+      }, 90000);
+      assert.equal(generated.status, "ready");
+      assert.equal(
+        (await call("GET", `${root}/test-suites`)).body.suites.length,
+        3,
+      );
+      assert.equal((await call("GET", `${root}/ai/elements`)).body.total, 5);
+      const promptSent = store.db
+        .prepare(
+          "SELECT payload FROM jobs WHERE kind='ai_generate' AND json_extract(payload,'$.draftId')=?",
+        )
+        .get(plannedDraft.id) as { payload: string };
+      assert.equal(JSON.parse(promptSent.payload).plan.items.length, 1);
 
       // Duplicate and delete; deletion keeps the run history.
       const copy = await call(

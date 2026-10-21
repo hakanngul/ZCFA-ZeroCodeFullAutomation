@@ -623,3 +623,130 @@
 .ai-element-impact .ai-element-warning {
   color: #8a4b00;
 }
+/* Survey test plan (ADR 018). */
+.ai-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid #dfe8da;
+  border-radius: 10px;
+  background: #fbfdf9;
+}
+.ai-plan-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--green-dark);
+}
+.ai-plan-area-name {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7b8e74;
+  margin: 4px 0 6px;
+}
+.ai-plan ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ai-plan li {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #e8ede4;
+  border-radius: 8px;
+  background: #fff;
+}
+.ai-plan li.selected {
+  border-color: #b9d6c3;
+  background: #f5faf6;
+}
+.ai-plan li.infeasible {
+  background: #fffaf2;
+}
+.ai-draft .ai-plan-check {
+  flex-direction: row;
+  padding-top: 6px;
+}
+.ai-plan-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.ai-plan-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ai-plan-title input {
+  flex: 1;
+  font-weight: 600;
+  font-size: 13px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: transparent;
+  color: var(--ink);
+}
+.ai-plan-title input:hover,
+.ai-plan-title input:focus {
+  border-color: #e2e8db;
+  background: #fff;
+}
+.ai-draft .ai-plan-body textarea {
+  font-family: inherit;
+  min-height: 0;
+  font-size: 12px;
+  border: 1px solid #e8ede4;
+  border-radius: 6px;
+  padding: 6px 8px;
+  resize: vertical;
+}
+.ai-plan-body small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.ai-plan-note {
+  color: #a26a2d !important;
+}
+.badge.ai-plan-positive {
+  color: #4e7a39;
+  background: #ecf5e5;
+  border-color: #dcead1;
+}
+.badge.ai-plan-negative {
+  color: #ae6250;
+  background: #fbefe9;
+  border-color: #f3dfd4;
+}
+.badge.ai-plan-edge {
+  color: #a78448;
+  background: #fbf5e8;
+  border-color: #ece2c8;
+}
+.ai-plan-instruction input {
+  border: 1px solid #e2e8db;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.ai-plan-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ai-plan-actions small {
+  color: var(--muted);
+}

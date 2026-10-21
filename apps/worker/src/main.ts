@@ -31,6 +31,7 @@ import {
   explorationLeaseMs,
   generateSuite,
   newGenerationMetrics,
+  planTests,
   normalizeInspection,
   type GenerationMetrics,
   executeSuite,
@@ -39,7 +40,10 @@ import {
 } from "../../../packages/assistant/src/agent";
 import type { Provider } from "../../../packages/assistant/src/provider";
 import { providerRequest } from "../../../packages/assistant/src/provider";
-import { aiSuiteSchema } from "../../../packages/assistant/src/spec";
+import {
+  aiSuiteSchema,
+  planSelectionSchema,
+} from "../../../packages/assistant/src/spec";
 import {
   evidencedPass,
   verifyPlan,
@@ -97,7 +101,8 @@ while (!stopping) {
   let cancelPoll: ReturnType<typeof setInterval> | undefined;
   try {
     // Suite generation only talks to the provider; it needs no browser.
-    if (job.kind !== "ai_generate") browser = await launchBrowser();
+    if (job.kind !== "ai_generate" && job.kind !== "ai_plan")
+      browser = await launchBrowser();
     if (job.kind === "discovery") {
       const findings = await discover(browser!);
       store.transaction(() => {
@@ -148,7 +153,12 @@ while (!stopping) {
       );
       await checkTargetNetwork(target);
       store.extendLease(job, explorationLeaseMs(provider.timeout_ms));
-      const prompt = JSON.parse(job.payload).prompt as string;
+      const { prompt, mode } = JSON.parse(job.payload) as {
+        prompt: string;
+        mode?: "plan" | "suite";
+      };
+      // Plan mode surveys the site; a test plan comes before any test (ADR 018).
+      const planning = mode === "plan";
       const inspection = await exploreTarget(
         browser!,
         target,
@@ -157,6 +167,7 @@ while (!stopping) {
         prompt,
         undefined,
         loadVariables(store.db, job.org_id, job.project_id, target.origin),
+        planning ? "survey" : "flow",
       );
       store.transaction(() => {
         const valid = store.db
@@ -194,18 +205,94 @@ while (!stopping) {
         const enqueue = store.db.prepare(
           "INSERT INTO jobs (id,org_id,project_id,kind,payload,status,created_at) VALUES (?,?,?,?,?,?,?)",
         );
-        [job.id, ...siblings].forEach((draftId, index) =>
+        if (planning)
           enqueue.run(
             randomUUID(),
             job.org_id,
             job.project_id,
-            "ai_generate",
-            JSON.stringify({ draftId, prompt }),
+            "ai_plan",
+            JSON.stringify({ draftId: job.id, prompt }),
             "queued",
-            // Distinct timestamps keep the queue in comparison order.
-            new Date(Date.parse(now) + index).toISOString(),
-          ),
-        );
+            now,
+          );
+        else
+          [job.id, ...siblings].forEach((draftId, index) =>
+            enqueue.run(
+              randomUUID(),
+              job.org_id,
+              job.project_id,
+              "ai_generate",
+              JSON.stringify({ draftId, prompt }),
+              "queued",
+              // Distinct timestamps keep the queue in comparison order.
+              new Date(Date.parse(now) + index).toISOString(),
+            ),
+          );
+        store.db
+          .prepare("UPDATE jobs SET status='done' WHERE id=? AND lease_token=?")
+          .run(job.id, job.lease_token);
+      });
+    } else if (job.kind === "ai_plan") {
+      const payload = JSON.parse(job.payload) as {
+        draftId: string;
+        prompt: string;
+      };
+      const draft = store.db
+        .prepare(
+          "SELECT * FROM ai_drafts WHERE id=? AND org_id=? AND project_id=? AND status='planning'",
+        )
+        .get(payload.draftId, job.org_id, job.project_id);
+      if (!draft) throw new DomainError("NOT_FOUND", "AI taslağı bulunamadı.");
+      const provider = store.db
+        .prepare("SELECT * FROM ai_providers WHERE id=? AND org_id=?")
+        .get(draft.provider_id as string, job.org_id) as Provider | undefined;
+      if (!provider)
+        throw new DomainError("PROVIDER_MISSING", "Provider silinmiş.");
+      const target = authorizedTarget(
+        draft.target_url as string,
+        store.authorizedOrigins(job.org_id),
+      );
+      const inspection = normalizeInspection(
+        JSON.parse((draft.inspection as string | null) ?? "{}"),
+      );
+      const plan = await planTests(
+        provider,
+        draft.model as string,
+        payload.prompt,
+        target,
+        inspection,
+        loadVariables(store.db, job.org_id, job.project_id, target.origin),
+      );
+      store.transaction(() => {
+        const valid = store.db
+          .prepare(
+            "SELECT id FROM jobs WHERE id=? AND status='running' AND lease_token=? AND lease_until>=?",
+          )
+          .get(job.id, job.lease_token, Date.now());
+        if (!valid) return;
+        const now = new Date().toISOString();
+        store.db
+          .prepare("INSERT OR REPLACE INTO ai_draft_plans VALUES (?,?,?,?)")
+          .run(payload.draftId, job.org_id, JSON.stringify(plan), now);
+        store.db
+          .prepare(
+            "UPDATE ai_drafts SET status='planned' WHERE id=? AND org_id=? AND status='planning'",
+          )
+          .run(payload.draftId, job.org_id);
+        const feasible = plan.items.filter((i) => i.feasible).length;
+        const early =
+          inspection.stopped && inspection.stopped.reason !== "done"
+            ? ` Keşif erken durdu: ${inspection.stopped.message}`
+            : "";
+        store.db
+          .prepare("INSERT INTO ai_messages VALUES (?,?,?,?,?)")
+          .run(
+            randomUUID(),
+            draft.conversation_id,
+            "assistant",
+            `${inspection.pages.length} sayfa incelendi (${inspection.path.length} keşif adımı, ${inspection.elements.length} element).${early} ${plan.items.length} test öneriyorum${feasible < plan.items.length ? ` (${plan.items.length - feasible} tanesi için eksik bilgi var)` : ""}. ${plan.summary} Oluşturmak istediklerini seç ve "Testleri oluştur" de; henüz test ya da element kaydedilmedi.`,
+            now,
+          );
         store.db
           .prepare("UPDATE jobs SET status='done' WHERE id=? AND lease_token=?")
           .run(job.id, job.lease_token);
@@ -215,7 +302,11 @@ while (!stopping) {
         draftId: string;
         prompt: string;
         revision?: { previous: unknown; instruction: string };
+        plan?: unknown;
       };
+      const planned = payload.plan
+        ? planSelectionSchema.parse(payload.plan)
+        : undefined;
       const draft = store.db
         .prepare(
           "SELECT * FROM ai_drafts WHERE id=? AND org_id=? AND project_id=? AND status='generating'",
@@ -255,6 +346,7 @@ while (!stopping) {
           job.project_id,
           target.origin,
         ),
+        planned,
       );
       store.transaction(() => {
         const valid = store.db
@@ -680,7 +772,11 @@ while (!stopping) {
         steps: [],
         assertionsExecuted: 0,
       });
-    else if (job.kind === "ai_analysis" || job.kind === "ai_generate")
+    else if (
+      job.kind === "ai_analysis" ||
+      job.kind === "ai_generate" ||
+      job.kind === "ai_plan"
+    )
       store.transaction(() => {
         const draftId = draftIdOf(job);
         const draft = store.db
@@ -698,7 +794,7 @@ while (!stopping) {
               randomUUID(),
               draft.conversation_id,
               "assistant",
-              `${job.kind === "ai_generate" ? "Senaryo üretimi" : "Analiz"} tamamlanamadı: ${error instanceof DomainError ? `${error.message} (${code})` : code}`,
+              `${job.kind === "ai_generate" ? "Senaryo üretimi" : job.kind === "ai_plan" ? "Test planı" : "Analiz"} tamamlanamadı: ${error instanceof DomainError ? `${error.message} (${code})` : code}`,
               new Date().toISOString(),
             );
         store.db

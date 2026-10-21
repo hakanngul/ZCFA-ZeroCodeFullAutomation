@@ -22,6 +22,7 @@ import { DomainError, type Actor } from "../../../packages/domain/src/index";
 import {
   actionTarget,
   aiSuiteSchema,
+  planSelectionSchema,
   suiteElementKeys,
   suiteLimits,
   type AiSuite,
@@ -592,7 +593,7 @@ export function registerAssistant(
       })(),
       drafts: store.db
         .prepare(
-          "SELECT d.*,c.comparison_id,c.position FROM ai_drafts d LEFT JOIN ai_comparison_drafts c ON c.draft_id=d.id WHERE d.conversation_id=? AND d.org_id=? AND d.project_id=? ORDER BY d.created_at DESC,c.position",
+          "SELECT d.*,c.comparison_id,c.position,p.plan FROM ai_drafts d LEFT JOIN ai_comparison_drafts c ON c.draft_id=d.id LEFT JOIN ai_draft_plans p ON p.draft_id=d.id AND p.org_id=d.org_id WHERE d.conversation_id=? AND d.org_id=? AND d.project_id=? ORDER BY d.created_at DESC,c.position",
         )
         .all(id, user.orgId, projectId)
         .map((row) => {
@@ -607,6 +608,7 @@ export function registerAssistant(
                 )
               : null,
             definition,
+            plan: row.plan ? JSON.parse(row.plan as string) : null,
             elementRefs: elementRefs(user, projectId, definition),
           };
         }),
@@ -630,6 +632,8 @@ export function registerAssistant(
         targetUrl: z.url().max(1000).optional(),
         providerId: z.uuid(),
         model: z.string().trim().min(1).max(120),
+        // `plan`: survey + test plan first, tests only on request (ADR 018).
+        mode: z.enum(["plan", "suite"]).default("suite"),
       })
       .strict()
       .parse(request.body);
@@ -695,7 +699,7 @@ export function registerAssistant(
           user.orgId,
           projectId,
           "ai_analysis",
-          JSON.stringify({ prompt: input.prompt }),
+          JSON.stringify({ prompt: input.prompt, mode: input.mode }),
           "queued",
           now,
         );
@@ -794,6 +798,110 @@ export function registerAssistant(
         }));
       });
       return reply.code(201).send({ id: suiteId, definition: suite, elements });
+    },
+  );
+  // "Testleri oluştur" (ADR 018): only the plan items a person selected are
+  // generated; the stored survey is reused, nothing is explored again.
+  app.post(
+    "/v1/projects/:projectId/ai/drafts/:id/generate",
+    async (request, reply) => {
+      const { user, projectId } = scoped(request, true),
+        { id } = idParam.parse(request.params),
+        selection = planSelectionSchema.parse(request.body),
+        draft = getDraft(user, projectId, id);
+      const plan = store.db
+        .prepare(
+          "SELECT plan FROM ai_draft_plans WHERE draft_id=? AND org_id=?",
+        )
+        .get(id, user.orgId) as { plan: string } | undefined;
+      if (!plan || !draft.inspection)
+        throw new DomainError(
+          "PLAN_MISSING",
+          "Bu taslağın test planı yok.",
+          409,
+        );
+      if (!["planned", "ready", "failed"].includes(draft.status as string))
+        throw new DomainError("DRAFT_NOT_READY", "Taslak hâlâ işleniyor.", 409);
+      const source = store.db
+        .prepare(
+          "SELECT payload FROM jobs WHERE org_id=? AND kind='ai_analysis' AND id=?",
+        )
+        .get(user.orgId, id) as { payload: string } | undefined;
+      const prompt =
+        (source
+          ? (JSON.parse(source.payload) as { prompt?: string }).prompt
+          : undefined) ?? "";
+      const now = new Date().toISOString();
+      const draftId = store.transaction(() => {
+        const pending = store.db
+          .prepare(
+            "SELECT count(*) AS n FROM jobs WHERE org_id=? AND status IN ('queued','running')",
+          )
+          .get(user.orgId)!.n as number;
+        if (pending >= 20)
+          throw new DomainError("QUEUE_FULL", "Kuyruk dolu.", 429);
+        // The planned draft itself, or a new draft over the same survey.
+        let target = id;
+        if (draft.status === "planned")
+          store.db
+            .prepare(
+              "UPDATE ai_drafts SET status='explored' WHERE id=? AND org_id=? AND status='planned'",
+            )
+            .run(id, user.orgId);
+        else {
+          target = randomUUID();
+          store.db
+            .prepare("INSERT INTO ai_drafts VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+            .run(
+              target,
+              user.orgId,
+              projectId,
+              draft.conversation_id,
+              draft.provider_id,
+              draft.model,
+              draft.target_url,
+              draft.inspection,
+              null,
+              "explored",
+              null,
+              now,
+            );
+          store.db
+            .prepare("INSERT INTO ai_draft_plans VALUES (?,?,?,?)")
+            .run(target, user.orgId, plan.plan, now);
+        }
+        store.db
+          .prepare("INSERT INTO ai_messages VALUES (?,?,?,?,?)")
+          .run(
+            randomUUID(),
+            draft.conversation_id,
+            "user",
+            `Testleri oluştur (${selection.items.length}): ${selection.items.map((i) => i.title).join(" · ")}${selection.instruction ? ` — ${selection.instruction}` : ""}`.slice(
+              0,
+              2000,
+            ),
+            now,
+          );
+        store.db
+          .prepare(
+            "INSERT INTO jobs (id,org_id,project_id,kind,payload,status,created_at) VALUES (?,?,?,?,?,?,?)",
+          )
+          .run(
+            randomUUID(),
+            user.orgId,
+            projectId,
+            "ai_generate",
+            JSON.stringify({ draftId: target, prompt, plan: selection }),
+            "queued",
+            now,
+          );
+        return target;
+      });
+      return reply.code(202).send({
+        draftId,
+        conversationId: draft.conversation_id,
+        status: "explored",
+      });
     },
   );
   app.post(

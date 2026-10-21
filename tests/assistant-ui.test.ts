@@ -23,6 +23,41 @@ test(
         return { choices: [{ message: { content: "OK" } }] };
       if (body.messages[0]?.content.startsWith("You explore"))
         return { choices: [{ message: { content: '{"done":true}' } }] };
+      if (body.messages[0]?.content.startsWith("You analyze"))
+        return {
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  summary:
+                    "Giriş sayfası incelendi; form doğrulaması test edilebilir.",
+                  items: [
+                    {
+                      title: "Yanlış bilgiler uyarı verir",
+                      category: "negative",
+                      area: "Giriş",
+                      description:
+                        "Yanlış e-posta ve parola ile giriş denenir; hata mesajı görünür.",
+                      pages: ["http://127.0.0.1:4100/login"],
+                      testData: ["Yanlış e-posta", "Yanlış parola"],
+                      feasible: true,
+                    },
+                    {
+                      title: "Geçerli giriş dashboard'u açar",
+                      category: "positive",
+                      area: "Giriş",
+                      description: "Geçerli bilgilerle giriş yapılır.",
+                      pages: ["http://127.0.0.1:4100/login"],
+                      testData: ["Geçerli kullanıcı"],
+                      feasible: false,
+                      note: "Geçerli kullanıcı bilgisi verilmedi.",
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        };
       return {
         choices: [
           {
@@ -197,6 +232,10 @@ test(
         .fill(
           "http://127.0.0.1:4100/login adresini analiz et ve yanlış giriş suite hazırla.",
         );
+      // Direct suite generation (the plan step is covered further below).
+      await page
+        .getByRole("checkbox", { name: "Önce analiz et ve test planı öner" })
+        .uncheck();
       await page.getByRole("button", { name: "Gönder" }).click();
       await page
         .getByText("Giriş doğrulama suite")
@@ -306,6 +345,45 @@ test(
         fullPage: true,
       });
       await page.setViewportSize({ width: 1440, height: 1000 });
+      // Survey → proposed plan → only the selected tests are created (ADR 018).
+      await page.getByRole("button", { name: "Yeni konuşma" }).click();
+      await page
+        .getByRole("checkbox", { name: "Önce analiz et ve test planı öner" })
+        .check();
+      await page
+        .getByRole("textbox", { name: "Test isteği" })
+        .fill("Giriş sayfasını incele ve ne test edilebileceğini öner.");
+      await page.getByRole("button", { name: "Gönder" }).click();
+      await page.getByText("Önerilen test planı · 2 test").waitFor({
+        timeout: 30000,
+      });
+      assert.equal(
+        await page
+          .getByRole("checkbox", { name: "Geçerli giriş dashboard'u açar seç" })
+          .isChecked(),
+        false,
+      );
+      await page.getByText("Eksik bilgi: Geçerli kullanıcı").waitFor();
+      await page.locator(".ai-plan").screenshot({
+        path: join(evidence, "plan.png"),
+      });
+      await page.getByRole("button", { name: "Testleri oluştur (1)" }).click();
+      await page
+        .getByRole("button", { name: "Testler'de aç" })
+        .waitFor({ timeout: 30000 });
+      await page.getByRole("button", { name: "Testler'de aç" }).click();
+      await page
+        .locator(".tc-card")
+        .getByText("Yanlış bilgiler uyarı verir")
+        .first()
+        .waitFor();
+      await page.locator(".tc-card").screenshot({
+        path: join(evidence, "plan-suite.png"),
+      });
+      await page
+        .locator("aside.sidebar")
+        .getByRole("button", { name: /^AI Test Assistant/ })
+        .click();
       await page.getByRole("button", { name: "Yeni konuşma" }).click();
       await page
         .getByRole("textbox", { name: "Hedef URL" })
