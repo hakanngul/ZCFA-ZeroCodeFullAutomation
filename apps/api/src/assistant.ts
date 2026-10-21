@@ -21,6 +21,7 @@ import {
 import { registerPromotedTests } from "./promoted-tests";
 import { registerTestVariables } from "./test-variables";
 import { registerReporting } from "./reporting";
+import { comparisonView, registerComparisons } from "./comparisons";
 
 const idParam = z.object({ id: z.uuid() });
 const targetOriginInput = z.object({ url: z.url().max(1000) }).strict();
@@ -151,6 +152,25 @@ export function registerAssistant(
       .get(id, user.orgId, projectId);
     if (!row) throw new DomainError("NOT_FOUND", "Taslak bulunamadı.", 404);
     return row;
+  }
+  function resolveTarget(
+    prompt: string,
+    targetUrl: string | undefined,
+    orgId: string,
+  ) {
+    const promptUrl = prompt
+      .match(/https?:\/\/[^\s<>"']+/i)?.[0]
+      .replace(/[),.;!?]+$/g, "");
+    if (
+      promptUrl &&
+      targetUrl &&
+      new URL(promptUrl).href !== new URL(targetUrl).href
+    )
+      throw new DomainError("TARGET_MISMATCH", "Prompt ve hedef URL farklı.");
+    return authorizedTarget(
+      promptUrl ?? targetUrl ?? "",
+      store.authorizedOrigins(orgId),
+    );
   }
   app.get("/v1/ai/authorized-origins", async (request) => {
     const user = actor(request);
@@ -308,6 +328,22 @@ export function registerAssistant(
         .slice(0, 200),
     };
   });
+  // Model list of a saved provider; the stored key never leaves the server.
+  app.get("/v1/ai/providers/:id/models", async (request) => {
+    const user = actor(request),
+      { id } = idParam.parse(request.params),
+      provider = getProvider(user, id);
+    await safeProviderNetwork(provider.base_url);
+    const result = (await providerRequest(provider, "models")) as {
+      data?: { id?: string }[];
+    };
+    return {
+      models: (result.data ?? [])
+        .map((item) => item.id)
+        .filter((id): id is string => !!id)
+        .slice(0, 200),
+    };
+  });
   app.post("/v1/ai/providers", async (request, reply) => {
     const user = actor(request, true),
       input = providerInput
@@ -417,9 +453,17 @@ export function registerAssistant(
           "SELECT * FROM ai_messages WHERE conversation_id=? ORDER BY created_at,id",
         )
         .all(id),
+      comparison: (() => {
+        const row = store.db
+          .prepare(
+            "SELECT id FROM ai_comparisons WHERE conversation_id=? AND org_id=? AND project_id=?",
+          )
+          .get(id, user.orgId, projectId) as { id: string } | undefined;
+        return row ? comparisonView(store, user, projectId, row.id) : null;
+      })(),
       drafts: store.db
         .prepare(
-          "SELECT * FROM ai_drafts WHERE conversation_id=? AND org_id=? AND project_id=? ORDER BY created_at DESC",
+          "SELECT d.*,c.comparison_id,c.position FROM ai_drafts d LEFT JOIN ai_comparison_drafts c ON c.draft_id=d.id WHERE d.conversation_id=? AND d.org_id=? AND d.project_id=? ORDER BY d.created_at DESC,c.position",
         )
         .all(id, user.orgId, projectId)
         .map((row) => ({
@@ -456,19 +500,7 @@ export function registerAssistant(
       })
       .strict()
       .parse(request.body);
-    const promptUrl = input.prompt
-      .match(/https?:\/\/[^\s<>"']+/i)?.[0]
-      .replace(/[),.;!?]+$/g, "");
-    if (
-      promptUrl &&
-      input.targetUrl &&
-      new URL(promptUrl).href !== new URL(input.targetUrl).href
-    )
-      throw new DomainError("TARGET_MISMATCH", "Prompt ve hedef URL farklı.");
-    const target = authorizedTarget(
-        promptUrl ?? input.targetUrl ?? "",
-        store.authorizedOrigins(user.orgId),
-      ),
+    const target = resolveTarget(input.prompt, input.targetUrl, user.orgId),
       provider = getProvider(user, input.providerId);
     if (!provider.active)
       throw new DomainError("PROVIDER_INACTIVE", "Aktif provider seçin.");
@@ -822,4 +854,5 @@ export function registerAssistant(
   registerPromotedTests(app, store, scoped);
   registerTestVariables(app, store, scoped);
   registerReporting(app, store, scoped);
+  registerComparisons(app, store, scoped, { getProvider, resolveTarget });
 }

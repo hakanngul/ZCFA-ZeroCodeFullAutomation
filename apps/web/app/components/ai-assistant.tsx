@@ -5,6 +5,7 @@ import { api, ApiError } from "../lib/api";
 import type { AiSuite } from "../../../../packages/assistant/src/spec";
 import { TestVariables } from "./test-variables";
 import { QualityFindings, type Findings } from "./quality-findings";
+import { ModelComparison, type Comparison } from "./model-comparison";
 import "../assistant.css";
 
 type Provider = {
@@ -32,6 +33,8 @@ type ExplorationStep = {
 };
 type Draft = {
   id: string;
+  model: string;
+  comparison_id: string | null;
   status: string;
   error_code: string | null;
   target_url: string;
@@ -111,6 +114,8 @@ type Run = {
     }[];
   } | null;
 };
+type CompareEntry = { providerId: string; model: string };
+const maxCompared = 3;
 const initial = {
   name: "",
   kind: "openai-compatible",
@@ -149,7 +154,13 @@ export function AiAssistant({
     [model, setModel] = useState("");
   const [editingDraft, setEditingDraft] = useState(""),
     [suiteJson, setSuiteJson] = useState(""),
-    [run, setRun] = useState<Run | null>(null);
+    [run, setRun] = useState<Run | null>(null),
+    [comparison, setComparison] = useState<Comparison | null>(null);
+  const [compareMode, setCompareMode] = useState(false),
+    [compareEntries, setCompareEntries] = useState<CompareEntry[]>([]),
+    [providerModels, setProviderModels] = useState<Record<string, string[]>>(
+      {},
+    );
   const [busy, setBusy] = useState(false),
     [notice, setNotice] = useState(""),
     [error, setError] = useState("");
@@ -176,10 +187,12 @@ export function AiAssistant({
         messages: Message[];
         drafts: Draft[];
         runs: Run[];
+        comparison: Comparison | null;
       }>(`${root}/conversations/${id}`);
       setConversationId(id);
       setMessages(data.messages);
       setDrafts(data.drafts);
+      setComparison(data.comparison);
       setRun(data.runs[0] ?? null);
     },
     [root],
@@ -272,6 +285,47 @@ export function AiAssistant({
       await submitPrompt(pendingTarget);
     });
   }
+  async function sendComparison() {
+    await task(async () => {
+      const response = await api<{ conversationId: string }>(
+        `${root}/comparisons`,
+        "POST",
+        {
+          prompt,
+          targetUrl,
+          models: compareEntries.map((e) => ({
+            providerId: e.providerId,
+            model: e.model.trim(),
+          })),
+        },
+      );
+      setPrompt("");
+      await loadLists();
+      await loadConversation(response.conversationId);
+      setNotice(
+        "Keşif bir kez çalışacak; ardından her model aynı keşiften senaryo üretecek.",
+      );
+    });
+  }
+  async function fetchProviderModels(id: string) {
+    await task(async () => {
+      const data = await api<{ models: string[] }>(
+        `/v1/ai/providers/${id}/models`,
+      );
+      setProviderModels((current) => ({ ...current, [id]: data.models }));
+      setNotice(`${data.models.length} model yüklendi.`);
+    });
+  }
+  async function approveDraft(id: string) {
+    await task(async () => {
+      const draft = drafts.find((d) => d.id === id);
+      if (!draft?.definition) return;
+      await api(`${root}/drafts/${id}/save`, "POST", draft.definition);
+      await loadLists();
+      await loadConversation(conversationId);
+      setNotice("Taslak onaylandı ve suite olarak kaydedildi.");
+    });
+  }
   async function saveDraft(id: string) {
     await task(async () => {
       const suite = JSON.parse(suiteJson) as AiSuite;
@@ -291,6 +345,7 @@ export function AiAssistant({
         {},
       );
       setRun({ id: result.id, status: "queued", result: null });
+      if (conversationId) await loadConversation(conversationId);
     });
   }
   async function revise(id: string) {
@@ -318,6 +373,7 @@ export function AiAssistant({
                 setConversationId("");
                 setMessages([]);
                 setDrafts([]);
+                setComparison(null);
                 setRun(null);
                 setPendingTarget("");
               }}
@@ -395,71 +451,85 @@ export function AiAssistant({
                   <p>{m.content}</p>
                 </div>
               ))}
+              {comparison && (
+                <ModelComparison
+                  comparison={comparison}
+                  busy={busy}
+                  canEdit={canEdit}
+                  onApprove={(id) => void approveDraft(id)}
+                  onRun={(id) => void startRun(id)}
+                />
+              )}
               {drafts.map((d) => (
                 <div className="ai-draft" key={d.id}>
-                  <strong>{draftTitles[d.status] ?? d.status}</strong>
+                  <strong>
+                    {d.comparison_id ? `${d.model} · ` : ""}
+                    {draftTitles[d.status] ?? d.status}
+                  </strong>
                   {d.error_code && <p>{d.error_code}</p>}
-                  {d.inspection && (
-                    <>
-                      <p>
-                        {d.inspection.pages.length} sayfa ·{" "}
-                        {d.inspection.path.length} keşif adımı ·{" "}
-                        {d.inspection.elements.length} DOM öğesi
-                      </p>
-                      <ul aria-label="İncelenen sayfalar">
-                        {d.inspection.pages.map((p) => (
-                          <li key={p.url}>
-                            {p.title || p.url} · {p.elements.length} öğe
-                          </li>
-                        ))}
-                      </ul>
-                      <ol className="ai-exploration" aria-label="Keşif yolu">
-                        <li>
-                          <span className="ai-exploration-page">
-                            {shortUrl(
-                              d.inspection.pages[0]?.url ?? d.target_url,
-                            )}
-                          </span>
-                          <span>Başlangıç sayfası açıldı</span>
-                        </li>
-                        {d.inspection.path.map((step, i) => (
-                          <li key={i}>
+                  {d.inspection &&
+                    (!d.comparison_id ||
+                      d.id === comparison?.entries[0]?.draftId) && (
+                      <>
+                        <p>
+                          {d.inspection.pages.length} sayfa ·{" "}
+                          {d.inspection.path.length} keşif adımı ·{" "}
+                          {d.inspection.elements.length} DOM öğesi
+                        </p>
+                        <ul aria-label="İncelenen sayfalar">
+                          {d.inspection.pages.map((p) => (
+                            <li key={p.url}>
+                              {p.title || p.url} · {p.elements.length} öğe
+                            </li>
+                          ))}
+                        </ul>
+                        <ol className="ai-exploration" aria-label="Keşif yolu">
+                          <li>
                             <span className="ai-exploration-page">
-                              {shortUrl(step.from)}
+                              {shortUrl(
+                                d.inspection.pages[0]?.url ?? d.target_url,
+                              )}
                             </span>
-                            <span>{stepText(step, d)}</span>
-                            <span className="ai-exploration-result">
-                              →{" "}
-                              {step.to && step.to !== step.from
-                                ? shortUrl(step.to)
-                                : "aynı sayfa"}
-                            </span>
+                            <span>Başlangıç sayfası açıldı</span>
                           </li>
-                        ))}
-                        {d.inspection.stopped?.step && (
-                          <li className="failed">
-                            <span className="ai-exploration-page">
-                              {shortUrl(d.inspection.stopped.step.from)}
-                            </span>
-                            <span>
-                              {stepText(d.inspection.stopped.step, d)}
-                            </span>
-                            <span className="ai-exploration-result">
-                              → uygulanmadı
-                            </span>
-                          </li>
-                        )}
-                      </ol>
-                      {d.inspection.stopped &&
-                        d.inspection.stopped.reason !== "done" && (
-                          <p className="ai-exploration-warning" role="note">
-                            Keşif erken durdu ({d.inspection.stopped.reason}):{" "}
-                            {d.inspection.stopped.message} Taslak yalnız görülen
-                            sayfalara dayanıyor.
-                          </p>
-                        )}
-                    </>
-                  )}
+                          {d.inspection.path.map((step, i) => (
+                            <li key={i}>
+                              <span className="ai-exploration-page">
+                                {shortUrl(step.from)}
+                              </span>
+                              <span>{stepText(step, d)}</span>
+                              <span className="ai-exploration-result">
+                                →{" "}
+                                {step.to && step.to !== step.from
+                                  ? shortUrl(step.to)
+                                  : "aynı sayfa"}
+                              </span>
+                            </li>
+                          ))}
+                          {d.inspection.stopped?.step && (
+                            <li className="failed">
+                              <span className="ai-exploration-page">
+                                {shortUrl(d.inspection.stopped.step.from)}
+                              </span>
+                              <span>
+                                {stepText(d.inspection.stopped.step, d)}
+                              </span>
+                              <span className="ai-exploration-result">
+                                → uygulanmadı
+                              </span>
+                            </li>
+                          )}
+                        </ol>
+                        {d.inspection.stopped &&
+                          d.inspection.stopped.reason !== "done" && (
+                            <p className="ai-exploration-warning" role="note">
+                              Keşif erken durdu ({d.inspection.stopped.reason}):{" "}
+                              {d.inspection.stopped.message} Taslak yalnız
+                              görülen sayfalara dayanıyor.
+                            </p>
+                          )}
+                      </>
+                    )}
                   {d.definition && (
                     <>
                       <h3>{d.definition.title}</h3>
@@ -619,6 +689,108 @@ export function AiAssistant({
                   }}
                 />
               </label>
+              <label className="ai-compare-toggle">
+                <input
+                  type="checkbox"
+                  checked={compareMode}
+                  onChange={(e) => {
+                    setCompareMode(e.target.checked);
+                    if (e.target.checked && !compareEntries.length)
+                      setCompareEntries([
+                        { providerId, model },
+                        { providerId, model: "" },
+                      ]);
+                  }}
+                />
+                Modelleri karşılaştır (2–{maxCompared} model, tek keşif)
+              </label>
+              {compareMode && (
+                <div className="ai-compare-models">
+                  {compareEntries.map((entry, i) => (
+                    <div key={i}>
+                      <select
+                        aria-label={`Karşılaştırma provider ${i + 1}`}
+                        value={entry.providerId}
+                        onChange={(e) =>
+                          setCompareEntries(
+                            compareEntries.map((x, n) =>
+                              n === i
+                                ? { ...x, providerId: e.target.value }
+                                : x,
+                            ),
+                          )
+                        }
+                      >
+                        {providers.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        aria-label={`Karşılaştırma modeli ${i + 1}`}
+                        list={`compare-models-${entry.providerId}`}
+                        placeholder="Model ID"
+                        value={entry.model}
+                        onChange={(e) =>
+                          setCompareEntries(
+                            compareEntries.map((x, n) =>
+                              n === i ? { ...x, model: e.target.value } : x,
+                            ),
+                          )
+                        }
+                      />
+                      <button
+                        className="secondary"
+                        disabled={busy || !entry.providerId}
+                        onClick={() =>
+                          void fetchProviderModels(entry.providerId)
+                        }
+                      >
+                        Modelleri getir
+                      </button>
+                      {compareEntries.length > 2 && (
+                        <button
+                          aria-label={`Model ${i + 1} kaldır`}
+                          onClick={() =>
+                            setCompareEntries(
+                              compareEntries.filter((_, n) => n !== i),
+                            )
+                          }
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {[...new Set(compareEntries.map((e) => e.providerId))].map(
+                    (id) => (
+                      <datalist key={id} id={`compare-models-${id}`}>
+                        {(providerModels[id] ?? []).map((m) => (
+                          <option key={m} value={m} />
+                        ))}
+                      </datalist>
+                    ),
+                  )}
+                  {compareEntries.length < maxCompared && (
+                    <button
+                      className="secondary"
+                      onClick={() =>
+                        setCompareEntries([
+                          ...compareEntries,
+                          { providerId, model: "" },
+                        ])
+                      }
+                    >
+                      <Plus size={14} /> Model ekle
+                    </button>
+                  )}
+                  <p>
+                    Keşfi ilk model yönetir; her model için ayrı üretim çağrısı
+                    yapılır.
+                  </p>
+                </div>
+              )}
               <textarea
                 aria-label="Test isteği"
                 rows={3}
@@ -629,19 +801,37 @@ export function AiAssistant({
                 }}
                 placeholder="Örnek: Login sayfasını analiz et; pozitif, negatif ve sınır senaryolarını hazırla."
               />
-              <button
-                className="primary"
-                disabled={
-                  busy ||
-                  !canEdit ||
-                  !providerId ||
-                  !model ||
-                  prompt.trim().length < 10
-                }
-                onClick={() => void send()}
-              >
-                <Send size={16} /> Gönder
-              </button>
+              {compareMode ? (
+                <button
+                  className="primary"
+                  disabled={
+                    busy ||
+                    !canEdit ||
+                    compareEntries.length < 2 ||
+                    compareEntries.some(
+                      (e) => !e.providerId || !e.model.trim(),
+                    ) ||
+                    prompt.trim().length < 10
+                  }
+                  onClick={() => void sendComparison()}
+                >
+                  <Send size={16} /> Karşılaştır
+                </button>
+              ) : (
+                <button
+                  className="primary"
+                  disabled={
+                    busy ||
+                    !canEdit ||
+                    !providerId ||
+                    !model ||
+                    prompt.trim().length < 10
+                  }
+                  onClick={() => void send()}
+                >
+                  <Send size={16} /> Gönder
+                </button>
+              )}
             </div>
           </section>
         </div>

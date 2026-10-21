@@ -121,6 +121,15 @@ export class Store {
         "utf8",
       ),
     );
+    this.db.exec(
+      readFileSync(
+        new URL(
+          "../../../infra/migrations/008_ai_comparisons.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
     this.db
       .prepare("INSERT OR IGNORE INTO projects VALUES (?,?,?)")
       .run(demoProject, demoOrg, "ZeroCode Demo");
@@ -351,6 +360,22 @@ export class Store {
       return this.run(actor, id);
     });
   }
+  /**
+   * Marks an AI draft failed. Compared drafts still waiting for the shared
+   * exploration ('queued') fail with it, so none stays pending forever.
+   */
+  failDraft(draftId: string, orgId: string, code: string) {
+    this.db
+      .prepare(
+        "UPDATE ai_drafts SET status='failed',error_code=? WHERE id=? AND org_id=? AND status IN ('queued','running','explored','generating')",
+      )
+      .run(code, draftId, orgId);
+    this.db
+      .prepare(
+        "UPDATE ai_drafts SET status='failed',error_code=? WHERE org_id=? AND status='queued' AND id IN (SELECT draft_id FROM ai_comparison_drafts WHERE comparison_id=(SELECT comparison_id FROM ai_comparison_drafts WHERE draft_id=? AND org_id=?))",
+      )
+      .run(code, orgId, draftId, orgId);
+  }
   claim(leaseMs = 180000): Job | undefined {
     return this.transaction(() => {
       const expired = this.db
@@ -374,11 +399,7 @@ export class Store {
               job.org_id,
             );
         else if (job.kind === "ai_analysis" || job.kind === "ai_generate")
-          this.db
-            .prepare(
-              "UPDATE ai_drafts SET status='failed',error_code='WORKER_LEASE_EXPIRED' WHERE id=? AND org_id=? AND status IN ('queued','running','explored','generating')",
-            )
-            .run(draftIdOf(job), job.org_id);
+          this.failDraft(draftIdOf(job), job.org_id, "WORKER_LEASE_EXPIRED");
         else if (job.kind === "ai_suite")
           this.db
             .prepare(

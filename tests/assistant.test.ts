@@ -1686,3 +1686,381 @@ test(
     }
   },
 );
+
+test(
+  "model comparison explores once and reports per-model generation metrics",
+  { timeout: 180000 },
+  async () => {
+    const dir = mkdtempSync(join(tmpdir(), "zc-compare-test-"));
+    const previousAllow = process.env.ZC_AI_ALLOW_LOCAL_PROVIDER,
+      previousKey = process.env.ZC_AI_ENCRYPTION_KEY;
+    process.env.ZC_AI_ALLOW_LOCAL_PROVIDER = "1";
+    process.env.ZC_AI_ENCRYPTION_KEY = randomBytes(32).toString("base64");
+    const testId = (value: string) => ({ kind: "testId", value });
+    const fill = (value: string, text: string) => ({
+      kind: "fill",
+      locator: testId(value),
+      value: text,
+    });
+    const click = { kind: "click", locator: testId("login-submit") };
+    const login = [
+      fill("login-email", "qa@example.test"),
+      fill("login-password", "local-fixture-only"),
+      click,
+    ];
+    const suite = (title: string, extra: unknown[] = []) => ({
+      title,
+      targetUrl: "http://127.0.0.1:4100/login",
+      scenarios: [
+        {
+          title: "Geçerli giriş dashboard'u açar",
+          category: "positive",
+          actions: [
+            ...login,
+            { kind: "assertVisible", locator: testId("dashboard-heading") },
+            { kind: "assertUrl", expected: "http://127.0.0.1:4100/dashboard" },
+            ...extra,
+          ],
+        },
+      ],
+    });
+    let explorations = 0;
+    const generateCalls: Record<string, number> = {};
+    const provider = Fastify();
+    provider.get("/v1/models", async () => ({
+      data: [{ id: "good-model" }, { id: "fixed-model" }, { id: "bad-model" }],
+    }));
+    provider.post("/v1/chat/completions", async (request) => {
+      const body = request.body as {
+        model: string;
+        messages: { content: string }[];
+      };
+      const reply = (content: string, usage?: unknown) => ({
+        choices: [{ message: { content } }],
+        ...(usage ? { usage } : {}),
+      });
+      if (body.messages[0]?.content.startsWith("You explore")) {
+        const state = JSON.parse(body.messages[1]!.content) as {
+          path: unknown[];
+        };
+        if (!state.path.length) explorations++;
+        return reply(
+          JSON.stringify(login[state.path.length] ?? { done: true }),
+        );
+      }
+      const call = (generateCalls[body.model] =
+        (generateCalls[body.model] ?? 0) + 1);
+      if (body.model === "good-model")
+        return reply(JSON.stringify(suite("Good suite")), {
+          prompt_tokens: 1000,
+          completion_tokens: 200,
+          total_tokens: 1200,
+        });
+      if (body.model === "fixed-model")
+        return call === 1
+          ? reply('{"title":"Eksik suite"}', {
+              prompt_tokens: 900,
+              completion_tokens: 10,
+              total_tokens: 910,
+            })
+          : reply(
+              JSON.stringify(
+                suite("Fixed suite", [
+                  {
+                    kind: "assertText",
+                    locator: testId("dashboard-balance"),
+                    expected: "1.250,00 TL",
+                  },
+                ]),
+              ),
+              {
+                prompt_tokens: 950,
+                completion_tokens: 220,
+                total_tokens: 1170,
+              },
+            );
+      // bad-model never matches the schema and returns no usage.
+      return reply('{"title":"Eksik suite"}');
+    });
+    await provider.listen({ host: "127.0.0.1", port: 4253 });
+    const store = new Store(join(dir, "zerocode.sqlite")),
+      app = await createApp(store);
+    const session = randomBytes(16).toString("hex");
+    store.db
+      .prepare("INSERT INTO sessions VALUES (?,?,?)")
+      .run(session, JSON.stringify(admin), Date.now() + 60000);
+    const headers = {
+      host: "127.0.0.1:4000",
+      origin: "http://127.0.0.1:3000",
+      "x-zerocode-client": "local-ui",
+      cookie: `zc_session=${session}`,
+    };
+    const call = async (method: string, url: string, payload?: unknown) => {
+      const res = await app.inject({
+        method,
+        url,
+        headers:
+          payload === undefined
+            ? headers
+            : { ...headers, "content-type": "application/json" },
+        payload: payload === undefined ? undefined : JSON.stringify(payload),
+      });
+      return { status: res.statusCode, body: res.json(), raw: res.body };
+    };
+    const processes: ChildProcess[] = [];
+    const start = (script: string) =>
+      processes.push(
+        spawn(process.execPath, ["--import", "tsx", script], {
+          detached: true,
+          stdio: "ignore",
+          env: { ...process.env, ZC_DATA_DIR: dir },
+        }),
+      );
+    const root = `/v1/projects/${demoProject}/ai`;
+    try {
+      const saved = await call("POST", "/v1/ai/providers", {
+        name: "Compare provider",
+        kind: "openai-compatible",
+        baseUrl: "http://127.0.0.1:4253/v1",
+        apiKey: "compare-test-key",
+        model: "good-model",
+        timeoutMs: 10000,
+      });
+      assert.equal(saved.status, 201);
+      const providerId = saved.body.id as string;
+      // Saved provider's models are listed with the stored key.
+      const listed = await call("GET", `/v1/ai/providers/${providerId}/models`);
+      assert.deepEqual(listed.body.models, [
+        "good-model",
+        "fixed-model",
+        "bad-model",
+      ]);
+      assert.equal(listed.raw.includes("compare-test-key"), false);
+      const prompt =
+        "Demo Bank girişini qa@example.test ve local-fixture-only ile yap, dashboard görünsün";
+      const entry = (model: string) => ({ providerId, model });
+      // Cost guard and input checks.
+      const four = await call("POST", `${root}/comparisons`, {
+        prompt,
+        targetUrl: "http://127.0.0.1:4100/login",
+        models: ["a", "b", "c", "d"].map(entry),
+      });
+      assert.equal(four.status, 400);
+      const one = await call("POST", `${root}/comparisons`, {
+        prompt,
+        targetUrl: "http://127.0.0.1:4100/login",
+        models: [entry("good-model")],
+      });
+      assert.equal(one.status, 400);
+      const duplicate = await call("POST", `${root}/comparisons`, {
+        prompt,
+        targetUrl: "http://127.0.0.1:4100/login",
+        models: [entry("good-model"), entry("good-model")],
+      });
+      assert.equal(duplicate.body.code, "DUPLICATE_MODEL");
+      const blocked = await call("POST", `${root}/comparisons`, {
+        prompt,
+        targetUrl: "https://example.com/login",
+        models: [entry("good-model"), entry("bad-model")],
+      });
+      assert.equal(blocked.body.code, "TARGET_BLOCKED");
+
+      start("tests/fixtures/server.ts");
+      start("apps/worker/src/main.ts");
+      await until(
+        async () =>
+          await fetch("http://127.0.0.1:4100/health").then(
+            (r) => r.ok,
+            () => false,
+          ),
+        10000,
+      );
+      const queued = await call("POST", `${root}/comparisons`, {
+        prompt,
+        targetUrl: "http://127.0.0.1:4100/login",
+        models: [entry("good-model"), entry("fixed-model"), entry("bad-model")],
+      });
+      assert.equal(queued.status, 202);
+      assert.equal(queued.body.draftIds.length, 3);
+      const comparison = await until(async () => {
+        const view = await call("GET", `${root}/comparisons/${queued.body.id}`);
+        return view.body.entries.every((e: { status: string }) =>
+          ["ready", "failed"].includes(e.status),
+        )
+          ? view.body
+          : null;
+      });
+      // One exploration (one browser session, one analysis job) for all models.
+      assert.equal(explorations, 1);
+      assert.equal(comparison.exploration.runs, 1);
+      assert.equal(comparison.exploration.status, "done");
+      assert.equal(comparison.exploration.steps, 3);
+      assert.equal(
+        (
+          store.db
+            .prepare(
+              "SELECT count(*) AS n FROM jobs WHERE kind='ai_generate' AND json_extract(payload,'$.draftId') IN (?,?,?)",
+            )
+            .get(...(queued.body.draftIds as [string, string, string])) as {
+            n: number;
+          }
+        ).n,
+        3,
+      );
+      const [good, fixed, bad] = comparison.entries;
+      assert.equal(good.model, "good-model");
+      assert.equal(good.providerName, "Compare provider");
+      assert.equal(good.status, "ready");
+      assert.equal(good.schema, "first_try");
+      assert.equal(good.attempts, 1);
+      assert.equal(good.scenarios, 1);
+      assert.equal(good.actions, 5);
+      assert.equal(good.assertions, 2);
+      assert.equal(good.fragileLocators, 0);
+      assert.deepEqual(good.usage, {
+        promptTokens: 1000,
+        completionTokens: 200,
+        totalTokens: 1200,
+      });
+      assert.equal(typeof good.durationMs, "number");
+      assert.equal(fixed.status, "ready");
+      assert.equal(fixed.schema, "corrected");
+      assert.equal(fixed.attempts, 2);
+      assert.equal(fixed.actions, 6);
+      assert.equal(fixed.assertions, 3);
+      assert.deepEqual(fixed.usage, {
+        promptTokens: 1850,
+        completionTokens: 230,
+        totalTokens: 2080,
+      });
+      assert.equal(bad.status, "failed");
+      assert.equal(bad.errorCode, "PROVIDER_FORMAT");
+      assert.equal(bad.schema, "invalid");
+      assert.equal(bad.attempts, 2);
+      assert.equal(bad.usage, null);
+      assert.equal(bad.scenarios, null);
+      assert.deepEqual(generateCalls, {
+        "good-model": 1,
+        "fixed-model": 2,
+        "bad-model": 2,
+      });
+      // All drafts share the one inspection; the conversation carries the view.
+      const detail = await call(
+        "GET",
+        `${root}/conversations/${queued.body.conversationId}`,
+      );
+      assert.equal(detail.body.comparison.id, queued.body.id);
+      assert.equal(detail.body.drafts.length, 3);
+      assert.equal(
+        new Set(
+          detail.body.drafts
+            .filter((d: { inspection: unknown }) => d.inspection)
+            .map((d: { inspection: unknown }) => JSON.stringify(d.inspection)),
+        ).size,
+        1,
+      );
+      // Human approval stays per draft; the table then shows the latest run.
+      const draft = detail.body.drafts.find(
+        (d: { id: string }) => d.id === good.draftId,
+      );
+      const approved = await call(
+        "POST",
+        `${root}/drafts/${good.draftId}/save`,
+        draft.definition,
+      );
+      assert.equal(approved.status, 201);
+      const run = await call(
+        "POST",
+        `${root}/suites/${approved.body.id}/runs`,
+        {},
+      );
+      assert.equal(run.status, 202);
+      const finished = await until(async () => {
+        const view = await call("GET", `${root}/comparisons/${queued.body.id}`);
+        const latest = view.body.entries[0].latestRun;
+        return latest && !["queued", "running"].includes(latest.status)
+          ? view.body
+          : null;
+      });
+      assert.equal(finished.entries[0].suiteId, approved.body.id);
+      assert.deepEqual(finished.entries[0].latestRun, {
+        id: run.body.id,
+        status: "passed",
+        passed: 1,
+        failed: 0,
+        skipped: 0,
+      });
+      assert.equal(finished.entries[1].latestRun, null);
+      // Comparisons are project scoped.
+      assert.equal(
+        (
+          await call(
+            "GET",
+            `/v1/projects/${demoProject}/ai/comparisons/${queued.body.conversationId}`,
+          )
+        ).status,
+        404,
+      );
+    } finally {
+      for (const p of processes)
+        try {
+          if (p.pid) process.kill(-p.pid, "SIGTERM");
+        } catch {}
+      await app.close();
+      store.close();
+      await provider.close();
+      if (previousAllow === undefined)
+        delete process.env.ZC_AI_ALLOW_LOCAL_PROVIDER;
+      else process.env.ZC_AI_ALLOW_LOCAL_PROVIDER = previousAllow;
+      if (previousKey === undefined) delete process.env.ZC_AI_ENCRYPTION_KEY;
+      else process.env.ZC_AI_ENCRYPTION_KEY = previousKey;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test("exploration failure fails every compared draft", () => {
+  const dir = mkdtempSync(join(tmpdir(), "zc-compare-fail-"));
+  const store = new Store(join(dir, "zerocode.sqlite"));
+  try {
+    const now = new Date().toISOString();
+    store.db
+      .prepare("INSERT INTO ai_conversations VALUES (?,?,?,?,?)")
+      .run("c1", admin.orgId, demoProject, "t", now);
+    store.db
+      .prepare("INSERT INTO ai_comparisons VALUES (?,?,?,?,?,?)")
+      .run("k1", admin.orgId, demoProject, "c1", "http://127.0.0.1:4100/", now);
+    for (const [i, id] of ["d1", "d2", "d3"].entries()) {
+      store.db
+        .prepare("INSERT INTO ai_drafts VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+        .run(
+          id,
+          admin.orgId,
+          demoProject,
+          "c1",
+          "p",
+          `m${i}`,
+          "http://127.0.0.1:4100/",
+          null,
+          null,
+          i ? "queued" : "running",
+          null,
+          now,
+        );
+      store.db
+        .prepare("INSERT INTO ai_comparison_drafts VALUES (?,?,?,?)")
+        .run(id, "k1", admin.orgId, i);
+    }
+    store.failDraft("d1", admin.orgId, "TARGET_UNREACHABLE");
+    const rows = store.db
+      .prepare("SELECT status,error_code FROM ai_drafts ORDER BY id")
+      .all() as { status: string; error_code: string }[];
+    assert.deepEqual(
+      rows.map((r) => [r.status, r.error_code]),
+      Array(3).fill(["failed", "TARGET_UNREACHABLE"]),
+    );
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

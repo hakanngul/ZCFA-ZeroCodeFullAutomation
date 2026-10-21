@@ -1,5 +1,34 @@
 # Devam noktası — 19 Ekim 2026
 
+## 21 Ekim 2026 — Modelleri karşılaştırma
+
+AI Test Assistant'a **Modelleri karşılaştır** modu eklendi: 2–3 model (kayıtlı
+herhangi bir provider; kayıtlı anahtarla yeni `GET /v1/ai/providers/:id/models`)
+aynı hedef ve istekle. Keşif bir kez çalışır (ilk model yönetir, tek
+`ai_analysis` işi), bitince worker aynı incelemeyi tüm karşılaştırma
+taslaklarına yazıp model başına bir `ai_generate` kuyruğa alır. `generateSuite`
+artık yanıt sayısını ve provider `usage` toplamını raporluyor; worker süreyle
+birlikte `ai_generation_metrics`'e yazıyor (başarısız üretimde de). Migration
+008 (idempotent): `ai_comparisons`, `ai_comparison_drafts`,
+`ai_generation_metrics`. Tablo: şema ilk denemede/düzeltmeyle/geçersiz,
+senaryo/adım/doğrulama, kırılgan locator, süre, token, hata kodu, son suite
+çalıştırması. Onay insanda: her satırda ayrı **Onayla** ve **Çalıştır**.
+Maliyet sınırı en fazla 3 model, aynı model iki kez seçilemez
+(`DUPLICATE_MODEL`); keşif hatası bekleyen tüm karşılaştırma taslaklarını
+düşürür (`Store.failDraft`). Yeni testler (`tests/assistant.test.ts`): üç
+mock model (ilk denemede geçerli / bozuk sonra düzeltilmiş / hep bozuk) →
+ölçüler, token toplamı, tek keşif, onay+çalıştırma sonucu; keşif hatası
+kardeş taslakları düşürür. Gerçek kontrol (`.local/my-data`, Evren, SauceDemo,
+`{{SAUCE_USER}}`/`{{SAUCE_PASS}}`, ortak keşif 2 sayfa · 8 adım):
+`deepseek-v4.1-flash` ilk denemede geçerli, 2 senaryo/12 adım/6 doğrulama,
+0 kırılgan, 9,3 sn, 5939 token → çalıştırma 2/0 başarılı;
+`qwen3.8-flash-next` ilk denemede geçerli, 2/12/6, 0 kırılgan, 30,3 sn,
+6702 token → 2/0 başarılı; `glm-5.3` 90 sn provider timeout'unda
+`PROVIDER_TIMEOUT`. Kanıt: `docs/evidence/assistant/model-comparison.png`.
+Sınırlar: keşfi yalnız ilk model yönetir (diğer modellerin keşif becerisi
+ölçülmez); süre üretim işinin duvar saati (kuyruk beklemesi hariç);
+token yalnız provider `usage` döndürürse.
+
 ## 21 Ekim 2026 — Raporlama: birleşik geçmiş, istatistik, dalgalı test, HTML rapor
 
 Çalıştırmalar → **Tüm çalıştırmalar**: klasik `runs`, `ai_suite_runs` ve

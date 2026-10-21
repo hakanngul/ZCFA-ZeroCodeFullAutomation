@@ -419,3 +419,79 @@
 .ai-step {
   margin: 6px 0;
 }
+.ai-comparison {
+  padding: 14px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+.ai-comparison p {
+  margin: 8px 0;
+  color: var(--muted);
+}
+.ai-comparison-wrap {
+  overflow-x: auto;
+}
+.ai-comparison table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.ai-comparison th,
+.ai-comparison td {
+  color: var(--ink);
+  text-align: left;
+  padding: 7px 6px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.ai-comparison th {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.ai-comparison td small {
+  display: block;
+  color: var(--muted);
+}
+.ai-comparison td.warn {
+  color: #b45309;
+  font-weight: 600;
+}
+.ai-comparison-model {
+  font-family: ui-monospace, monospace;
+  white-space: nowrap;
+}
+.ai-composer .ai-compare-toggle {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+}
+.ai-layout .ai-compare-toggle input {
+  width: auto;
+}
+.ai-compare-models {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ai-compare-models > div {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.ai-compare-models > div > select {
+  flex: 0 0 180px;
+}
+.ai-compare-models > div > button {
+  white-space: nowrap;
+}
+.ai-compare-models > button {
+  align-self: flex-start;
+}
+.ai-compare-models p {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+}

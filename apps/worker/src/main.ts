@@ -17,7 +17,9 @@ import {
   checkTargetNetwork,
   exploreTarget,
   generateSuite,
+  newGenerationMetrics,
   normalizeInspection,
+  type GenerationMetrics,
   executeSuite,
 } from "../../../packages/assistant/src/agent";
 import type { Provider } from "../../../packages/assistant/src/provider";
@@ -49,6 +51,10 @@ while (!stopping) {
     continue;
   }
   let browser: Awaited<ReturnType<typeof launchBrowser>> | undefined;
+  // Generation metrics survive a failed ai_generate so the comparison shows them.
+  let generation:
+    | { draftId: string; metrics: GenerationMetrics; started: number }
+    | undefined;
   let cancelPoll: ReturnType<typeof setInterval> | undefined;
   try {
     // Suite generation only talks to the provider; it needs no browser.
@@ -150,20 +156,39 @@ while (!stopping) {
             "UPDATE ai_drafts SET status='explored',inspection=? WHERE id=? AND org_id=? AND status='running'",
           )
           .run(JSON.stringify(inspection), job.id, job.org_id);
+        // A model comparison shares this one exploration: every compared
+        // draft receives the same inspection and its own generation job.
+        const siblings = (
+          store.db
+            .prepare(
+              "SELECT c.draft_id FROM ai_comparison_drafts c JOIN ai_drafts d ON d.id=c.draft_id WHERE c.org_id=? AND c.draft_id<>? AND d.status='queued' AND c.comparison_id=(SELECT comparison_id FROM ai_comparison_drafts WHERE draft_id=? AND org_id=?) ORDER BY c.position",
+            )
+            .all(job.org_id, job.id, job.id, job.org_id) as {
+            draft_id: string;
+          }[]
+        ).map((row) => row.draft_id);
+        for (const sibling of siblings)
+          store.db
+            .prepare(
+              "UPDATE ai_drafts SET status='explored',inspection=? WHERE id=? AND org_id=? AND status='queued'",
+            )
+            .run(JSON.stringify(inspection), sibling, job.org_id);
         // Suite generation runs as its own job so each stays within the lease.
-        store.db
-          .prepare(
-            "INSERT INTO jobs (id,org_id,project_id,kind,payload,status,created_at) VALUES (?,?,?,?,?,?,?)",
-          )
-          .run(
+        const enqueue = store.db.prepare(
+          "INSERT INTO jobs (id,org_id,project_id,kind,payload,status,created_at) VALUES (?,?,?,?,?,?,?)",
+        );
+        [job.id, ...siblings].forEach((draftId, index) =>
+          enqueue.run(
             randomUUID(),
             job.org_id,
             job.project_id,
             "ai_generate",
-            JSON.stringify({ draftId: job.id, prompt }),
+            JSON.stringify({ draftId, prompt }),
             "queued",
-            now,
-          );
+            // Distinct timestamps keep the queue in comparison order.
+            new Date(Date.parse(now) + index).toISOString(),
+          ),
+        );
         store.db
           .prepare("UPDATE jobs SET status='done' WHERE id=? AND lease_token=?")
           .run(job.id, job.lease_token);
@@ -192,6 +217,11 @@ while (!stopping) {
       const inspection = normalizeInspection(
         JSON.parse((draft.inspection as string | null) ?? "{}"),
       );
+      generation = {
+        draftId: payload.draftId,
+        metrics: newGenerationMetrics(),
+        started: Date.now(),
+      };
       const suite = await generateSuite(
         provider,
         draft.model as string,
@@ -200,6 +230,7 @@ while (!stopping) {
         inspection,
         payload.revision,
         loadVariables(store.db, job.org_id, job.project_id, target.origin),
+        generation.metrics,
       );
       store.transaction(() => {
         const valid = store.db
@@ -213,6 +244,10 @@ while (!stopping) {
             "UPDATE ai_drafts SET status='ready',definition=? WHERE id=? AND org_id=? AND status='generating'",
           )
           .run(JSON.stringify(suite), payload.draftId, job.org_id);
+        saveGeneration(job.org_id, generation!);
+        const compared = !!store.db
+          .prepare("SELECT 1 FROM ai_comparison_drafts WHERE draft_id=?")
+          .get(payload.draftId);
         const early =
           inspection.stopped && inspection.stopped.reason !== "done"
             ? ` Keşif erken durdu: ${inspection.stopped.message}`
@@ -223,9 +258,11 @@ while (!stopping) {
             randomUUID(),
             draft.conversation_id,
             "assistant",
-            payload.revision
-              ? `Düzeltilmiş taslak hazır: ${suite.scenarios.length} senaryo. Kaydetmeden önce düzenleyip onaylayın.`
-              : `${inspection.pages.length} sayfa incelendi (${inspection.path.length} keşif adımı, ${inspection.elements.length} element). ${suite.scenarios.length} senaryo taslağı hazır.${early} Kaydetmeden önce düzenleyip onaylayın.`,
+            compared
+              ? `${draft.model}: ${suite.scenarios.length} senaryo taslağı hazır (karşılaştırma). Kaydetmeden önce inceleyip onaylayın.`
+              : payload.revision
+                ? `Düzeltilmiş taslak hazır: ${suite.scenarios.length} senaryo. Kaydetmeden önce düzenleyip onaylayın.`
+                : `${inspection.pages.length} sayfa incelendi (${inspection.path.length} keşif adımı, ${inspection.elements.length} element). ${suite.scenarios.length} senaryo taslağı hazır.${early} Kaydetmeden önce düzenleyip onaylayın.`,
             new Date().toISOString(),
           );
         store.db
@@ -465,11 +502,8 @@ while (!stopping) {
           )
           .get(draftId, job.org_id);
         const code = error instanceof DomainError ? error.code : "AGENT_ERROR";
-        store.db
-          .prepare(
-            "UPDATE ai_drafts SET status='failed',error_code=? WHERE id=? AND org_id=? AND status IN ('running','explored','generating')",
-          )
-          .run(code, draftId, job.org_id);
+        store.failDraft(draftId, job.org_id, code);
+        if (generation) saveGeneration(job.org_id, generation);
         if (draft)
           store.db
             .prepare("INSERT INTO ai_messages VALUES (?,?,?,?,?)")
@@ -548,3 +582,23 @@ while (!stopping) {
   }
 }
 store.close();
+
+function saveGeneration(
+  orgId: string,
+  run: { draftId: string; metrics: GenerationMetrics; started: number },
+) {
+  store.db
+    .prepare(
+      "INSERT OR REPLACE INTO ai_generation_metrics VALUES (?,?,?,?,?,?,?,?)",
+    )
+    .run(
+      run.draftId,
+      orgId,
+      run.metrics.attempts,
+      Date.now() - run.started,
+      run.metrics.promptTokens,
+      run.metrics.completionTokens,
+      run.metrics.totalTokens,
+      new Date().toISOString(),
+    );
+}

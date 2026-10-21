@@ -222,6 +222,23 @@ gerçekten çalışmazsa adım `CHECK_NOT_RUN`/`ACTION_FAILED` ile başarısız 
 asla PASS sayılmaz. Model bu kontrolleri yalnız istek açıkça kalite,
 erişilebilirlik, bağlantı veya konsol kontrolü istediğinde ekler.
 
+**Modelleri karşılaştır**: Sohbet alanındaki "Modelleri karşılaştır" kutusu
+2–3 model seçtirir (kayıtlı herhangi bir provider; "Modelleri getir" kayıtlı
+anahtarla `/v1/ai/providers/:id/models` çağırır, anahtar tarayıcıya dönmez).
+Aynı hedef ve istek için keşif **bir kez** çalışır (ilk model yönetir); ardından
+her model aynı inceleme sonucundan kendi `ai_generate` işinde suite üretir —
+karşılaştırma adil ve ucuzdur. Tablo model başına şunu gösterir: şemaya ilk
+denemede mi, düzeltme çağrısından sonra mı uyduğu (yanıt sayısı), senaryo /
+adım / doğrulama sayısı, kırılgan (nth-of-type/nth-child) locator kullanımı,
+üretim süresi, provider `usage` döndürürse token (girdi/çıktı), başarısızsa
+hata kodu. Onay insanda kalır: her taslak ayrı onaylanır ve çalıştırılır;
+tablo her taslağın son suite çalıştırmasının sonucunu (başarılı/başarısız)
+gösterir. Karşılaştırma `ai_comparisons` + `ai_comparison_drafts`, üretim
+ölçüleri `ai_generation_metrics` tablosundadır (migration 008; ölçüler her
+taslak için tutulur). Maliyet sınırı: en fazla 3 model; provider timeout'ları
+aynen kullanılır; keşif başarısız olursa bekleyen tüm karşılaştırma taslakları
+aynı hata koduyla başarısız olur.
+
 ## Raporlama
 
 Çalıştırmalar ekranının üstündeki **Tüm çalıştırmalar** kartı klasik testleri,
