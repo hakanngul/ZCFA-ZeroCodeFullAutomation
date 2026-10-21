@@ -10,7 +10,11 @@ import { Store } from "../packages/storage/src/index";
 import {
   authorizedTarget,
   executeSuite,
+  generateSuite,
   isFragileLocator,
+  newGenerationMetrics,
+  scenarioTimeoutMs,
+  suiteLeaseMs,
   locatorKey,
   observePage,
 } from "../packages/assistant/src/agent";
@@ -30,7 +34,8 @@ import {
   resolvePlaceholders,
   variablesForModel,
 } from "../packages/assistant/src/variables";
-import { aiSuiteSchema } from "../packages/assistant/src/spec";
+import { aiSuiteSchema, suiteLimits } from "../packages/assistant/src/spec";
+import { encrypt } from "../packages/assistant/src/provider";
 
 async function until<T>(
   probe: () => Promise<T | null | false | undefined>,
@@ -2062,5 +2067,199 @@ test("exploration failure fails every compared draft", () => {
   } finally {
     store.close();
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("suite limits allow 10 scenarios, cap total actions and fit the lease", () => {
+  const scenario = (title: string, actions = 1) => ({
+    title,
+    category: "negative",
+    actions: Array.from({ length: actions }, () => ({
+      kind: "assertUrl",
+      expected: "https://www.saucedemo.com/",
+    })),
+  });
+  const suite = (scenarios: unknown[]) => ({
+    title: "Login senaryoları",
+    targetUrl: "https://www.saucedemo.com/",
+    scenarios,
+  });
+  const ten = Array.from({ length: 10 }, (_, i) => scenario(`Senaryo ${i}`));
+  assert.equal(aiSuiteSchema.safeParse(suite(ten)).success, true);
+  const eleven = aiSuiteSchema.safeParse(
+    suite([...ten, scenario("Fazla senaryo")]),
+  );
+  assert.equal(eleven.success, false);
+  assert.equal(eleven.error?.issues[0]?.code, "too_big");
+  const long =
+    "Kilitli kullanıcı girişinde beklenen hata mesajı görünür ".repeat(2);
+  assert.equal(long.trim().length > 100, true);
+  assert.equal(aiSuiteSchema.safeParse(suite([scenario(long)])).success, true);
+  assert.equal(
+    aiSuiteSchema.safeParse(
+      suite([scenario("x".repeat(suiteLimits.scenarioTitleLength + 1))]),
+    ).success,
+    false,
+  );
+  // 7 × 20 = 140 actions exceeds the 120 per-suite budget.
+  const heavy = aiSuiteSchema.safeParse(
+    suite(Array.from({ length: 7 }, (_, i) => scenario(`Ağır ${i}`, 20))),
+  );
+  assert.equal(heavy.success, false);
+  assert.equal(heavy.error?.issues[0]?.message, "too_many_actions");
+  assert.equal(
+    aiSuiteSchema.safeParse(
+      suite(Array.from({ length: 6 }, (_, i) => scenario(`Orta ${i}`, 20))),
+    ).success,
+    true,
+  );
+  assert.equal(suiteLeaseMs(1), 180000);
+  assert.equal(
+    suiteLeaseMs(suiteLimits.scenarios) >=
+      suiteLimits.scenarios * scenarioTimeoutMs,
+    true,
+  );
+});
+
+test("lease extension only applies to the job holding the lease", () => {
+  const dir = mkdtempSync(join(tmpdir(), "zc-lease-test-"));
+  const store = new Store(join(dir, "db.sqlite"));
+  try {
+    const now = new Date().toISOString();
+    store.db
+      .prepare(
+        "INSERT INTO jobs (id,org_id,project_id,kind,payload,status,created_at) VALUES (?,?,?,?,?,?,?)",
+      )
+      .run(
+        randomUUID(),
+        admin.orgId,
+        demoProject,
+        "discovery",
+        "{}",
+        "queued",
+        now,
+      );
+    const job = store.claim()!;
+    const before = job.lease_until;
+    assert.equal(store.extendLease(job, suiteLeaseMs(10)), true);
+    assert.equal(job.lease_until > before, true);
+    assert.equal(
+      store.extendLease({ ...job, lease_token: randomUUID() }, 400000),
+      false,
+    );
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("generateSuite retries an empty reply once and states the limits", async () => {
+  const previousKey = process.env.ZC_AI_ENCRYPTION_KEY;
+  process.env.ZC_AI_ENCRYPTION_KEY = randomBytes(32).toString("base64");
+  const replies: unknown[] = [];
+  const prompts: string[] = [];
+  const server = Fastify();
+  server.post("/v1/chat/completions", async (request) => {
+    const body = request.body as { messages: { content: string }[] };
+    prompts.push(body.messages[0]!.content);
+    return replies.shift();
+  });
+  await server.listen({ host: "127.0.0.1", port: 0 });
+  const address = server.server.address() as { port: number };
+  const provider = {
+    id: randomUUID(),
+    name: "Mock",
+    kind: "openai-compatible",
+    base_url: `http://127.0.0.1:${address.port}/v1`,
+    encrypted_key: encrypt("mock-key"),
+    model: "mock",
+    timeout_ms: 5000,
+    active: 1,
+  };
+  const target = new URL("https://www.saucedemo.com/");
+  const inspection = {
+    pages: [
+      {
+        title: "Swag Labs",
+        url: target.href,
+        elements: [
+          {
+            kind: "button",
+            text: "Login",
+            locator: { kind: "testId", value: "login-button" },
+          },
+        ],
+      },
+    ],
+    path: [],
+  };
+  const valid = {
+    choices: [
+      {
+        message: {
+          content: JSON.stringify({
+            title: "Login",
+            targetUrl: target.href,
+            scenarios: [
+              {
+                title: "Giriş butonu görünür",
+                category: "positive",
+                actions: [
+                  {
+                    kind: "assertVisible",
+                    locator: { kind: "testId", value: "login-button" },
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+      },
+    ],
+  };
+  const empty = {
+    choices: [{ message: { content: "", reasoning_content: "thinking" } }],
+  };
+  try {
+    replies.push(empty, valid);
+    const metrics = newGenerationMetrics();
+    const suite = await generateSuite(
+      provider,
+      "mock",
+      "login senaryoları",
+      target,
+      inspection,
+      undefined,
+      [],
+      metrics,
+    );
+    assert.equal(suite.scenarios.length, 1);
+    assert.equal(metrics.attempts, 2);
+    assert.match(prompts[0]!, /at most 10 scenarios/);
+    assert.match(prompts[0]!, /at most 120 actions in the whole suite/);
+    // An empty retry does not consume the schema correction attempt.
+    replies.push(empty, { choices: [{ message: { content: "{}" } }] }, valid);
+    const corrected = newGenerationMetrics();
+    await generateSuite(
+      provider,
+      "mock",
+      "login senaryoları",
+      target,
+      inspection,
+      undefined,
+      [],
+      corrected,
+    );
+    assert.equal(corrected.attempts, 3);
+    // A second empty reply is a real PROVIDER_EMPTY.
+    replies.push(empty, empty);
+    await assert.rejects(
+      generateSuite(provider, "mock", "x", target, inspection),
+      (error: { code?: string }) => error.code === "PROVIDER_EMPTY",
+    );
+  } finally {
+    await server.close();
+    if (previousKey === undefined) delete process.env.ZC_AI_ENCRYPTION_KEY;
+    else process.env.ZC_AI_ENCRYPTION_KEY = previousKey;
   }
 });

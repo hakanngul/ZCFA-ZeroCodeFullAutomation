@@ -118,7 +118,10 @@ değerlerini hiç yazmaz ve projedeki gizli test verilerini son bir kez
 `{ignore?}`, `assertNoBrokenLinks`, `assertAccessible` `{impact?}`) kabul eder;
 bunların özet bulguları adım sonucunda `findings` olarak döner. Her senaryoda açık assertion zorunludur.
 Analizden dönen locator'lar incelenen DOM'da gözlenmiş olmalı; kullanıcı da
-onaydan önce yalnız bu locator'ları saklayabilir. En fazla 4 senaryo ve her
-senaryoda 8 adım vardır. Her senaryo 30 saniye ile sınırlıdır; otomatik retry yok.
+onaydan önce yalnız bu locator'ları saklayabilir. En fazla 10 senaryo, senaryo
+başına 20 ve suite başına toplam 120 adım; senaryo başlığı en fazla 160 karakter.
+Her senaryo 30 saniye ile sınırlıdır; suite çalıştırma lease'i senaryo sayısına
+göre uzar. Otomatik retry yok. Ekran görüntüsü uç noktası `index` 0–9, `step`
+0–19 kabul eder.
 Provider kimlik bilgisi response, log ve artifact içinde dönmez. Harici hedef
 yalnız yapılandırılmış tam HTTPS origin listesinde çalışır.

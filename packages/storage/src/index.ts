@@ -376,6 +376,17 @@ export class Store {
       )
       .run(code, orgId, draftId, orgId);
   }
+  /** Extends a running job's lease; false when the lease is no longer held. */
+  extendLease(job: Job, leaseMs: number) {
+    const until = Date.now() + leaseMs;
+    const changed = this.db
+      .prepare(
+        "UPDATE jobs SET lease_until=? WHERE id=? AND status='running' AND lease_token=? AND lease_until>=? AND lease_until<?",
+      )
+      .run(until, job.id, job.lease_token, Date.now(), until).changes;
+    if (changed) job.lease_until = until;
+    return changed > 0;
+  }
   claim(leaseMs = 180000): Job | undefined {
     return this.transaction(() => {
       const expired = this.db

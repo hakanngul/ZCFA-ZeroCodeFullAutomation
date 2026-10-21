@@ -21,6 +21,7 @@ import {
   normalizeInspection,
   type GenerationMetrics,
   executeSuite,
+  suiteLeaseMs,
 } from "../../../packages/assistant/src/agent";
 import type { Provider } from "../../../packages/assistant/src/provider";
 import { providerRequest } from "../../../packages/assistant/src/provider";
@@ -278,6 +279,7 @@ while (!stopping) {
       if (!row)
         throw new DomainError("NOT_FOUND", "Suite çalışması bulunamadı.");
       const suite = aiSuiteSchema.parse(JSON.parse(row.definition as string));
+      store.extendLease(job, suiteLeaseMs(suite.scenarios.length));
       const result = await executeSuite(
         browser!,
         suite,
@@ -406,6 +408,7 @@ while (!stopping) {
           );
         // executeSuite re-reads target authorization and test data at run time.
         const suite = verifyPlan(plan);
+        store.extendLease(job, suiteLeaseMs(suite.scenarios.length));
         const outcome = await executeSuite(
           browser!,
           suite,

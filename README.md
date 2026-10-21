@@ -157,8 +157,15 @@ lease her iki tür için taslağı `failed / WORKER_LEASE_EXPIRED` yapar. "Yeni
 taslak olarak düzelt" keşfi tekrarlamaz, doğrudan `ai_generate` kuyruğa alır
 (önceki suite ve isteğe bağlı `instruction` ile). Suite taslağı tüm incelenen sayfaların birleşik
 locator kümesini kullanır, her senaryo yine `targetUrl`'den başlar ve keşif
-yolunu tekrarlar (senaryo başına en fazla 20 adım). Gözlenmeyen locator önerisi
-bir düzeltme çağrısıyla modele geri bildirilir. Sayfa başına en fazla 60 öğe
+yolunu tekrarlar. Suite sınırları: en fazla 10 senaryo, senaryo başına 20,
+suite başına toplam 120 adım; suite başlığı 120, senaryo başlığı 160 karakter
+(modele 120 söylenir). Sınırlar üretim isteminde açıkça belirtilir; istek daha
+fazlasını isterse model en önemli senaryoları seçer. Her senaryo 30 sn ile
+sınırlıdır; suite çalıştırması lease'i senaryo sayısına göre uzatır
+(`senaryo × 30 sn + 60 sn`, en az 180 sn). Gözlenmeyen locator önerisi
+bir düzeltme çağrısıyla modele geri bildirilir. Boş provider yanıtı (ör. yalnız
+`reasoning_content`) düzeltme hakkını harcamadan bir kez yeniden istenir; ikinci
+boş yanıt `PROVIDER_EMPTY` olur. Sayfa başına en fazla 60 öğe
 gözlenir; iframe, yeni sekme ve dosya yükleme akışları keşfedilmez.
 
 Hedef varsayılan olarak yalnız `http://127.0.0.1:4100` demo origin'idir.

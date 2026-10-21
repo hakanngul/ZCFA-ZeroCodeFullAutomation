@@ -7,7 +7,10 @@ import { isIP } from "node:net";
 import { z } from "zod";
 import { Store } from "../../../packages/storage/src/index";
 import { DomainError, type Actor } from "../../../packages/domain/src/index";
-import { aiSuiteSchema } from "../../../packages/assistant/src/spec";
+import {
+  aiSuiteSchema,
+  suiteLimits,
+} from "../../../packages/assistant/src/spec";
 import {
   authorizedTarget,
   normalizeInspection,
@@ -286,11 +289,17 @@ export function registerAssistant(
       max_tokens: 4,
       messages: [{ role: "user", content: "Reply OK" }],
     })) as {
-      choices?: { message?: { content?: string; reasoning?: string } }[];
+      choices?: {
+        message?: {
+          content?: string;
+          reasoning?: string;
+          reasoning_content?: string;
+        };
+      }[];
     };
     // Reasoning models may spend the tiny budget on `reasoning` only.
     const message = completion.choices?.[0]?.message;
-    if (!message?.content && !message?.reasoning)
+    if (!message?.content && !message?.reasoning && !message?.reasoning_content)
       throw new DomainError(
         "PROVIDER_FORMAT",
         "Provider geçerli sohbet yanıtı döndürmedi.",
@@ -825,8 +834,17 @@ export function registerAssistant(
   }
   const evidenceParams = z.object({
     id: z.uuid(),
-    index: z.coerce.number().int().min(0).max(7),
-    step: z.coerce.number().int().min(0).max(19).optional(),
+    index: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(suiteLimits.scenarios - 1),
+    step: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(suiteLimits.actionsPerScenario - 1)
+      .optional(),
   });
   for (const [prefix, table] of [
     ["runs", "ai_suite_runs"],

@@ -1,5 +1,30 @@
 # Devam noktası — 19 Ekim 2026
 
+## 21 Ekim 2026 — Daha büyük suite'ler ve boş yanıt tekrarı
+
+Sorun: Evren `deepseek-v4.1-flash` "tüm login senaryoları" (7 senaryo) isteğinde
+önce `PROVIDER_EMPTY`, sonra `scenarios: too_big` / `scenarios.3.title: too_big`
+ile düştü. `spec.ts` artık `suiteLimits` dışa veriyor: en fazla 10 senaryo,
+senaryo başına 20 / suite başına 120 adım (`too_many_actions`), suite başlığı
+120, senaryo başlığı 160 karakter. Üretim istemi sınırları açıkça yazar (fazla
+istek gelirse önemli olanları seç); düzeltme mesajı `too_big (max N)` ve
+sınırları tekrarlar; `max_tokens` 3000 → 8000. Boş içerik (yalnız
+`reasoning`/`reasoning_content` dahil) düzeltme hakkını harcamadan bir kez
+yeniden istenir. Bağlantı testi `reasoning_content`'i de kabul eder. Worker
+`ai_suite`/`ai_test_run` öncesi `Store.extendLease` ile lease'i
+`suiteLeaseMs(n) = max(180 sn, n × 30 sn + 60 sn)` yapar (yalnız lease sahibi
+token uzatabilir). Ekran görüntüsü uç noktası index 0–9 / step 0–19. Yeni
+testler: sınırlar ve lease hesabı, lease uzatma kapsamı, boş yanıt tekrarı.
+Doğrulama: typecheck, format:check, `pnpm test` 35/35, build, `test:e2e` 13/13.
+Gerçek kontrol (`.local/my-data`, Evren, `deepseek-v4.1-flash`, SauceDemo):
+taslak 87 sn'de hazır, 7 senaryo; onay + çalıştırma 7/7 başarılı (geçerli
+giriş, kilitli kullanıcı, yanlış parola, boş kullanıcı adı, boş parola, ikisi
+boş, hata mesajını kapatma). Kanıt:
+`docs/evidence/assistant/login-scenarios-run.png`. Sınırlar: keşif modelin
+geçersiz adımıyla 1 sayfada erken durdu (login sayfası yeterliydi); API ve
+worker aynı anda açılınca ilk `pnpm dev` bir kez `database is locked` ile
+düştü, ikinci denemede açıldı (ayrı iş).
+
 ## 21 Ekim 2026 — Modelleri karşılaştırma
 
 AI Test Assistant'a **Modelleri karşılaştır** modu eklendi: 2–3 model (kayıtlı
