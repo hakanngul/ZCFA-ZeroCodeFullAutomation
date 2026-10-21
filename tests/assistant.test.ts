@@ -22,6 +22,12 @@ import {
   evidencedPass,
   verifyPlan,
 } from "../packages/assistant/src/promote";
+import {
+  placeholders,
+  redactSecrets,
+  resolvePlaceholders,
+  variablesForModel,
+} from "../packages/assistant/src/variables";
 
 async function until<T>(
   probe: () => Promise<T | null | false | undefined>,
@@ -1169,3 +1175,351 @@ test("promoted AI test plans are checksummed and PASS needs full evidence", () =
     false,
   );
 });
+test("test variable placeholders resolve, redact and fail clearly", () => {
+  const variables = [
+    { key: "USER", value: "qa@example.test", secret: false },
+    { key: "PASS", value: "s3cr3t-value", secret: true },
+  ];
+  assert.deepEqual(placeholders("{{USER}} / {{PASS}} / {{lower}}"), [
+    "USER",
+    "PASS",
+  ]);
+  assert.equal(
+    resolvePlaceholders("{{USER}}:{{PASS}}", variables),
+    "qa@example.test:s3cr3t-value",
+  );
+  assert.throws(() => resolvePlaceholders("{{NOPE}}", variables), {
+    code: "MISSING_VARIABLE",
+  });
+  assert.deepEqual(variablesForModel(variables), [
+    { key: "USER", value: "qa@example.test" },
+    { key: "PASS", secret: true },
+  ]);
+  assert.deepEqual(
+    redactSecrets({ a: ["x s3cr3t-value y"], b: 1 }, variables),
+    { a: ["x {{PASS}} y"], b: 1 },
+  );
+});
+test(
+  "project test data: encrypted at rest, hidden from API and provider, resolved only at run time",
+  { timeout: 180000 },
+  async () => {
+    const dir = mkdtempSync(join(tmpdir(), "zc-vars-test-"));
+    const previousAllow = process.env.ZC_AI_ALLOW_LOCAL_PROVIDER,
+      previousKey = process.env.ZC_AI_ENCRYPTION_KEY;
+    process.env.ZC_AI_ALLOW_LOCAL_PROVIDER = "1";
+    process.env.ZC_AI_ENCRYPTION_KEY = randomBytes(32).toString("base64");
+    const secret = "local-fixture-only";
+    const providerBodies: string[] = [];
+    const fill = (value: string, text: string) => ({
+      kind: "fill",
+      locator: { kind: "testId", value },
+      value: text,
+    });
+    const click = {
+      kind: "click",
+      locator: { kind: "testId", value: "login-submit" },
+    };
+    const provider = Fastify();
+    provider.post("/v1/chat/completions", async (request) => {
+      const raw = JSON.stringify(request.body);
+      providerBodies.push(raw);
+      const body = request.body as { messages: { content: string }[] };
+      if (body.messages[0]?.content.startsWith("You explore")) {
+        const state = JSON.parse(body.messages[1]!.content) as {
+          path: unknown[];
+        };
+        const steps = [
+          fill("login-email", "{{DEMO_USER}}"),
+          fill("login-password", "{{DEMO_PASS}}"),
+          click,
+        ];
+        return {
+          choices: [
+            {
+              message: {
+                content: JSON.stringify(
+                  steps[state.path.length] ?? { done: true },
+                ),
+              },
+            },
+          ],
+        };
+      }
+      return {
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                title: "Test verisiyle giriş",
+                targetUrl: "http://127.0.0.1:4100/login",
+                scenarios: [
+                  {
+                    title: "Kayıtlı test verisiyle giriş",
+                    category: "positive",
+                    actions: [
+                      fill("login-email", "{{DEMO_USER}}"),
+                      fill("login-password", "{{DEMO_PASS}}"),
+                      click,
+                      {
+                        kind: "assertVisible",
+                        locator: { kind: "testId", value: "dashboard-heading" },
+                      },
+                    ],
+                  },
+                ],
+              }),
+            },
+          },
+        ],
+      };
+    });
+    await provider.listen({ host: "127.0.0.1", port: 4252 });
+    const store = new Store(join(dir, "zerocode.sqlite")),
+      app = await createApp(store);
+    const session = randomBytes(16).toString("hex");
+    store.db
+      .prepare("INSERT INTO sessions VALUES (?,?,?)")
+      .run(session, JSON.stringify(admin), Date.now() + 60000);
+    const headers = {
+      host: "127.0.0.1:4000",
+      origin: "http://127.0.0.1:3000",
+      "x-zerocode-client": "local-ui",
+      cookie: `zc_session=${session}`,
+    };
+    const call = async (method: string, url: string, payload?: unknown) => {
+      const res = await app.inject({
+        method,
+        url,
+        headers:
+          payload === undefined
+            ? headers
+            : { ...headers, "content-type": "application/json" },
+        payload: payload === undefined ? undefined : JSON.stringify(payload),
+      });
+      return { status: res.statusCode, body: res.json(), raw: res.body };
+    };
+    const processes: ChildProcess[] = [];
+    const start = (script: string) =>
+      processes.push(
+        spawn(process.execPath, ["--import", "tsx", script], {
+          detached: true,
+          stdio: "ignore",
+          env: { ...process.env, ZC_DATA_DIR: dir },
+        }),
+      );
+    const root = `/v1/projects/${demoProject}`;
+    try {
+      const user = await call("POST", `${root}/test-variables`, {
+        key: "DEMO_USER",
+        value: "qa@example.test",
+        secret: false,
+        origin: "http://127.0.0.1:4100/login",
+      });
+      assert.equal(user.status, 201);
+      assert.equal(user.body.origin, "http://127.0.0.1:4100");
+      assert.equal(user.body.value, "qa@example.test");
+      const pass = await call("POST", `${root}/test-variables`, {
+        key: "DEMO_PASS",
+        value: secret,
+        secret: true,
+      });
+      assert.equal(pass.status, 201);
+      assert.equal(pass.body.value, null);
+      assert.equal(pass.raw.includes(secret), false);
+      assert.equal(
+        (
+          await call("POST", `${root}/test-variables`, {
+            key: "lower",
+            value: "x",
+            secret: false,
+          })
+        ).status,
+        400,
+      );
+      assert.equal(
+        (
+          await call("POST", `${root}/test-variables`, {
+            key: "DEMO_PASS",
+            value: "x",
+            secret: true,
+          })
+        ).status,
+        409,
+      );
+      // Turning a secret into plain text requires re-entering the value.
+      const reveal = await call(
+        "PUT",
+        `${root}/test-variables/${pass.body.id}`,
+        {
+          key: "DEMO_PASS",
+          secret: false,
+        },
+      );
+      assert.equal(reveal.body.code, "VALUE_REQUIRED");
+      const listed = await call("GET", `${root}/test-variables`);
+      assert.equal(listed.body.variables.length, 2);
+      assert.equal(listed.raw.includes(secret), false);
+      const stored = store.db
+        .prepare("SELECT value FROM test_variables WHERE id=?")
+        .get(pass.body.id)!.value as string;
+      assert.equal(stored.includes(secret), false);
+      store.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+      assert.equal(
+        readFileSync(join(dir, "zerocode.sqlite")).includes(
+          Buffer.from(secret),
+        ),
+        false,
+      );
+      const saved = await call("POST", "/v1/ai/providers", {
+        name: "Vars provider",
+        kind: "openai-compatible",
+        baseUrl: "http://127.0.0.1:4252/v1",
+        apiKey: "vars-test-key",
+        model: "vars-model",
+        timeoutMs: 10000,
+      });
+      assert.equal(saved.status, 201);
+      start("tests/fixtures/server.ts");
+      start("apps/worker/src/main.ts");
+      await until(
+        async () =>
+          await fetch("http://127.0.0.1:4100/health").then(
+            (r) => r.ok,
+            () => false,
+          ),
+        10000,
+      );
+      const queued = await call("POST", `${root}/ai/messages`, {
+        prompt:
+          "Demo Bank girişini {{DEMO_USER}} ve {{DEMO_PASS}} ile yap, dashboard görünsün",
+        targetUrl: "http://127.0.0.1:4100/login",
+        providerId: saved.body.id,
+        model: "vars-model",
+      });
+      assert.equal(queued.status, 202);
+      const detail = await until(async () => {
+        const response = await call(
+          "GET",
+          `${root}/ai/conversations/${queued.body.conversationId}`,
+        );
+        if (response.body.drafts[0]?.status === "failed")
+          throw new Error(response.body.drafts[0].error_code);
+        return response.body.drafts[0]?.status === "ready"
+          ? response.body
+          : null;
+      });
+      const draft = detail.drafts[0];
+      // Login only succeeds when the worker filled the resolved values.
+      assert.equal(draft.inspection.stopped.reason, "done");
+      assert.equal(draft.inspection.path.length, 3);
+      assert.equal(draft.inspection.path[1].value, "{{DEMO_PASS}}");
+      assert.match(draft.inspection.path[2].to, /\/dashboard$/);
+      assert.equal(
+        draft.definition.scenarios[0].actions[1].value,
+        "{{DEMO_PASS}}",
+      );
+      const explore = providerBodies.find((b) => b.includes("You explore"))!;
+      assert.equal(explore.includes("DEMO_USER"), true);
+      assert.equal(explore.includes("qa@example.test"), true);
+      assert.equal(explore.includes("DEMO_PASS"), true);
+      const suite = await call(
+        "POST",
+        `${root}/ai/drafts/${queued.body.draftId}/save`,
+        draft.definition,
+      );
+      assert.equal(suite.status, 201);
+      const runSuite = async (id: string) => {
+        const run = await call("POST", `${root}/ai/suites/${id}/runs`, {});
+        assert.equal(run.status, 202);
+        return until(async () => {
+          const response = await call("GET", `${root}/ai/runs/${run.body.id}`);
+          return ["queued", "running"].includes(response.body.status)
+            ? null
+            : response;
+        });
+      };
+      const passed = await runSuite(suite.body.id);
+      assert.equal(passed.body.status, "passed");
+      assert.equal(passed.raw.includes(secret), false);
+      const promoted = await call(
+        "POST",
+        `${root}/ai/suites/${suite.body.id}/promote`,
+        {},
+      );
+      assert.equal(promoted.status, 201);
+      const testId = promoted.body.test.testId as string;
+      const runTest = async () => {
+        const run = await call("POST", `${root}/ai/tests/${testId}/runs`, {
+          revision: 1,
+        });
+        assert.equal(run.status, 202);
+        return until(async () => {
+          const response = await call(
+            "GET",
+            `${root}/ai/test-runs/${run.body.id}`,
+          );
+          return ["queued", "running"].includes(response.body.status)
+            ? null
+            : response;
+        });
+      };
+      const promotedPass = await runTest();
+      assert.equal(promotedPass.body.status, "passed");
+      assert.equal(promotedPass.raw.includes(secret), false);
+      assert.equal(promotedPass.raw.includes("{{DEMO_PASS}}"), true);
+      // A new value is used by the next run; the published version is unchanged.
+      const before = await call("GET", `${root}/ai/tests/${testId}/versions/1`);
+      assert.equal(
+        (
+          await call("PUT", `${root}/test-variables/${pass.body.id}`, {
+            key: "DEMO_PASS",
+            value: "wrong-password",
+            secret: true,
+          })
+        ).status,
+        200,
+      );
+      const after = await call("GET", `${root}/ai/tests/${testId}/versions/1`);
+      assert.equal(after.body.checksum, before.body.checksum);
+      assert.deepEqual(after.body.test, before.body.test);
+      const wrong = await runTest();
+      assert.equal(wrong.body.status, "failed");
+      // Missing variable: a clear step error, never a PASS.
+      const missing = structuredClone(draft.definition);
+      missing.scenarios[0].actions[0].value = "{{NOT_DEFINED}}";
+      const missingSuite = await call(
+        "POST",
+        `${root}/ai/drafts/${queued.body.draftId}/save`,
+        missing,
+      );
+      assert.equal(missingSuite.status, 201);
+      const failed = await runSuite(missingSuite.body.id);
+      assert.equal(failed.body.status, "failed");
+      const step = failed.body.result.results[0].steps[0];
+      assert.equal(step.code, "MISSING_VARIABLE");
+      assert.match(step.message, /NOT_DEFINED/);
+      assert.ok(providerBodies.length >= 4);
+      for (const body of providerBodies)
+        assert.equal(body.includes(secret), false);
+      assert.equal(
+        providerBodies.some((b) => b.includes("wrong-password")),
+        false,
+      );
+    } finally {
+      for (const p of processes)
+        try {
+          if (p.pid) process.kill(-p.pid, "SIGTERM");
+        } catch {}
+      await app.close();
+      store.close();
+      await provider.close();
+      if (previousAllow === undefined)
+        delete process.env.ZC_AI_ALLOW_LOCAL_PROVIDER;
+      else process.env.ZC_AI_ALLOW_LOCAL_PROVIDER = previousAllow;
+      if (previousKey === undefined) delete process.env.ZC_AI_ENCRYPTION_KEY;
+      else process.env.ZC_AI_ENCRYPTION_KEY = previousKey;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);

@@ -47,3 +47,13 @@ görünmez. Keşif 3 sayfa / 5 adım (login → inventory → cart), suite 3 sen
 - `saucedemo-draft-card.png`: incelenen 3 sayfa ve senaryo listesi.
 - `saucedemo-run-result.png`: suite çalışması ve her adımın durumu.
 - `saucedemo-full.png`: tam sayfa görünümü.
+
+## Test verileri (21 Ekim 2026)
+
+Gerçek `.local/my-data`, `pnpm dev`, Evren provider ve SauceDemo ile headless
+Chrome'da çekildi.
+
+- `test-data-settings.png`: Ayarlar → Test verileri; `{{SAUCE_USER}}` açık,
+  `{{SAUCE_PASS}}` gizli (`••••••`), kapsam `https://www.saucedemo.com`.
+- `test-data-run.png`: literal kimlik bilgisi içermeyen prompt, `{{KEY}}` ile
+  keşif yolu ve suite çalıştırması (1 başarılı · 0 başarısız).

@@ -189,6 +189,22 @@ origin yetkisi her çalıştırmada (API ve worker) yeniden kontrol edilir.
 Sonuçlar ve kanıt görüntüleri Çalıştırmalar'da görünür. Ayrıntı:
 `docs/decisions/012-promoted-ai-tests.md`.
 
+**Test verileri** (Ayarlar → Test verileri): kullanıcı adı/parola gibi değerler
+proje başına bir kez kaydedilir (`test_variables`, migration 007); isteğe bağlı
+olarak tek bir hedef origin'e kapsamlanır (origin'e özel kayıt, tüm hedefler
+kaydını ezer). Prompt ve suite'lerde `{{SAUCE_USER}}` gibi referans yazılır.
+Gizli değerler provider anahtarıyla aynı AES-256-GCM anahtarıyla şifreli
+saklanır, kayıttan sonra tarayıcıya dönmez (`••••••`), AI sağlayıcısına
+gönderilmez (model yalnız adları ve gizli olmayan değerleri görür; giden istekte
+gizli değer `{{KEY}}`'e çevrilir) ve log/kanıt JSON'una yazılmaz; ekran
+görüntülerinde input'lar zaten maskelidir. Keşifte `fill` değeri ya istekte
+birebir geçen bir metin ya da tanımlı bir `{{KEY}}` referansı olmalıdır.
+Suite'ler ve kalıcı test sürümleri yalnız referansı saklar; değer yalnız
+worker'da çalıştırma anında çözülür. Tanımsız referans adımı
+`MISSING_VARIABLE` ile başarısız yapar (asla PASS değil). Bir değeri
+değiştirmek yayımlanmış test sürümlerini değiştirmez (sürüm referansı
+saklar, checksum aynı kalır); yeni değer sonraki çalıştırmada kullanılır.
+
 ## Mimari
 
 - `apps/web`: Next.js Türkçe çalışma alanı; business / flow / technical projeksiyonları.

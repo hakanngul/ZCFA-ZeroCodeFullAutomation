@@ -28,6 +28,7 @@ import {
   verifyPlan,
   type PromotedPlan,
 } from "../../../packages/assistant/src/promote";
+import { loadVariables } from "../../../packages/assistant/src/variables";
 import { randomUUID } from "node:crypto";
 
 const store = new Store();
@@ -108,6 +109,8 @@ while (!stopping) {
         provider,
         draft.model as string,
         prompt,
+        undefined,
+        loadVariables(store.db, job.org_id, job.project_id, target.origin),
       );
       store.transaction(() => {
         const valid = store.db
@@ -196,6 +199,7 @@ while (!stopping) {
         target,
         inspection,
         payload.revision,
+        loadVariables(store.db, job.org_id, job.project_id, target.origin),
       );
       store.transaction(() => {
         const valid = store.db
@@ -236,11 +240,19 @@ while (!stopping) {
         .get(job.id, job.org_id, job.project_id);
       if (!row)
         throw new DomainError("NOT_FOUND", "Suite çalışması bulunamadı.");
+      const suite = aiSuiteSchema.parse(JSON.parse(row.definition as string));
       const result = await executeSuite(
         browser!,
-        aiSuiteSchema.parse(JSON.parse(row.definition as string)),
+        suite,
         resolve(localDir, "artifacts", job.id),
         store.authorizedOrigins(job.org_id),
+        // Values are read at execution time; the suite keeps {{KEY}} only.
+        loadVariables(
+          store.db,
+          job.org_id,
+          job.project_id,
+          new URL(suite.targetUrl).origin,
+        ),
       );
       let advice: string | undefined;
       if (result.status === "failed") {
@@ -350,12 +362,19 @@ while (!stopping) {
             "PLAN_CHECKSUM_MISMATCH",
             "Çalıştırma planı bütünlüğü doğrulanamadı.",
           );
-        // executeSuite re-reads target authorization at run time.
+        // executeSuite re-reads target authorization and test data at run time.
+        const suite = verifyPlan(plan);
         const outcome = await executeSuite(
           browser!,
-          verifyPlan(plan),
+          suite,
           resolve(localDir, "artifacts", job.id),
           store.authorizedOrigins(job.org_id),
+          loadVariables(
+            store.db,
+            job.org_id,
+            job.project_id,
+            new URL(suite.targetUrl).origin,
+          ),
         );
         status =
           outcome.status === "passed" && !evidencedPass(plan, outcome)

@@ -89,6 +89,8 @@ uygulamayı açtığı anlamına gelmez: deneme canlı yerel demo hedefinde yap�
 | GET        | /v1/projects/:projectId/ai/test-runs                               | Kalıcı test çalıştırmaları                                           |
 | GET        | /v1/projects/:projectId/ai/test-runs/:id                           | Plan, durum, senaryo sonuçları                                       |
 | GET        | /v1/projects/:projectId/ai/test-runs/:id/screenshots/:index        | Auth/org/checksum kontrollü PNG                                      |
+| GET/POST   | /v1/projects/:projectId/test-variables                             | Test verileri; gizli değer yanıtta `null`                            |
+| PUT/DELETE | /v1/projects/:projectId/test-variables/:id                         | Güncelle (boş değer = koru) / sil                                    |
 
 `aiSuiteSchema` yalnız `fill`, `click`, `assertVisible`, `assertText` ve
 `assertUrl` adımlarını kabul eder. Her senaryoda açık assertion zorunludur.

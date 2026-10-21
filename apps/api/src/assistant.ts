@@ -19,6 +19,7 @@ import {
   type Provider,
 } from "../../../packages/assistant/src/provider";
 import { registerPromotedTests } from "./promoted-tests";
+import { registerTestVariables } from "./test-variables";
 
 const idParam = z.object({ id: z.uuid() });
 const targetOriginInput = z.object({ url: z.url().max(1000) }).strict();
@@ -818,4 +819,5 @@ export function registerAssistant(
     );
   }
   registerPromotedTests(app, store, scoped);
+  registerTestVariables(app, store, scoped);
 }

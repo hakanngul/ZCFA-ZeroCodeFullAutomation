@@ -367,3 +367,52 @@
   background: #fbf3e8;
   color: #6d4417;
 }
+.test-variable-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: 13px;
+  align-items: end;
+}
+.test-variable-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.test-variable-form .ai-actions {
+  grid-column: 1 / -1;
+}
+.ai-settings-card .test-variable-secret {
+  flex-direction: row;
+  align-items: center;
+  padding-bottom: 10px;
+}
+.ai-settings-card .test-variable-secret input {
+  width: auto;
+}
+.test-variable-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.test-variable-table th,
+.test-variable-table td {
+  text-align: left;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--line);
+}
+.test-variable-masked {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+}
+.test-variable-row-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+.test-variable-row-actions button {
+  color: var(--green);
+  margin-left: 8px;
+}

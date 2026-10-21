@@ -1,5 +1,28 @@
 # Devam noktası — 19 Ekim 2026
 
+## 21 Ekim 2026 — Proje test verileri ({{KEY}})
+
+Ayarlar → **Test verileri** eklendi: proje başına anahtar/değer, isteğe bağlı
+hedef origin kapsamı ve "Gizli" seçeneği (`test_variables`, migration 007,
+idempotent; uçlar `/v1/projects/:projectId/test-variables`). Gizli değerler
+provider anahtarıyla aynı AES-256-GCM yardımcısıyla şifreleniyor, API yanıtında
+`null`/UI'da `••••••`. Prompt ve suite'lerde `{{KEY}}` kullanılıyor: keşifte
+model değişken adlarını (gizli olmayanların değerini) görüyor, `fill` değeri
+istekteki literal ya da tanımlı `{{KEY}}` olabiliyor (yoksa durma nedeni
+`unknown_variable`); provider'a giden içerikte gizli değerler `{{KEY}}`'e
+çevriliyor. Suite/kalıcı test referansı saklıyor, worker çalıştırma anında
+çözüyor; tanımsız referans `MISSING_VARIABLE` adım hatası. Keşifte parola
+input'unun değeri artık element adına sızmıyor (yalnız buton input'ları).
+Küçük düzeltme: kenar menüdeki Çalıştırmalar sayacı kalıcı AI test
+çalıştırmalarını (`ai_test_runs`) da sayıyor. Gerçek doğrulama
+(`.local/my-data`, Evren `deepseek-v4.1-flash`, SauceDemo): SAUCE_USER (açık)
+ve SAUCE_PASS (gizli) eklendi, literal kimlik bilgisi olmadan prompt gönderildi;
+keşif `{{SAUCE_USER}}`/`{{SAUCE_PASS}}` ile girişi yapıp /inventory.html'e
+ulaştı (2 sayfa, 3 adım), suite referansları sakladı, onaylanıp çalıştırıldı:
+1 başarılı · 0 başarısız. Kanıt: `docs/evidence/assistant/test-data-settings.png`,
+`test-data-run.png`. Sınır: gerçek vault/rotasyon yok; değerler aynı yerel
+anahtarla korunuyor; çok kısa gizli değerlerin redaksiyonu metni bozabilir.
+
 ## 21 Ekim 2026 — Onaylı AI suite'ini kalıcı teste dönüştürme
 
 Testler → AI suite'ler listesinde **Kalıcı teste dönüştür** eklendi

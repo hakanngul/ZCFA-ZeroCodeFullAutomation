@@ -112,6 +112,15 @@ export class Store {
         "utf8",
       ),
     );
+    this.db.exec(
+      readFileSync(
+        new URL(
+          "../../../infra/migrations/007_test_variables.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
     this.db
       .prepare("INSERT OR IGNORE INTO projects VALUES (?,?,?)")
       .run(demoProject, demoOrg, "ZeroCode Demo");

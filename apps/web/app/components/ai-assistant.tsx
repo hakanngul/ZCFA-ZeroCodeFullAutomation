@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Bot, Plus, Send, Play, Check, Trash2, RefreshCw } from "lucide-react";
 import { api, ApiError } from "../lib/api";
 import type { AiSuite } from "../../../../packages/assistant/src/spec";
+import { TestVariables } from "./test-variables";
 import "../assistant.css";
 
 type Provider = {
@@ -101,6 +102,7 @@ type Run = {
         kind: string;
         status: string;
         code?: string;
+        message?: string;
         screenshot?: { filename: string; sha256: string };
       }[];
       screenshot?: { filename: string; sha256: string };
@@ -517,6 +519,7 @@ export function AiAssistant({
                       {r.steps.map((step, n) => (
                         <p key={n}>
                           {step.kind}: {step.status} {step.code ?? ""}{" "}
+                          {step.message ? `— ${step.message} ` : ""}
                           {step.screenshot && (
                             <a
                               target="_blank"
@@ -698,6 +701,11 @@ export function AiAssistant({
               </div>
             ))}
           </div>
+          <TestVariables
+            projectId={projectId}
+            canEdit={canEdit}
+            origins={authorizedOrigins.map((site) => site.origin)}
+          />
           <div className="ai-settings-card card">
             <div className="ai-chat-head">
               <div>

@@ -165,7 +165,10 @@ test(
         .getByRole("textbox", { name: "Hedef site URL" })
         .fill("https://www.saucedemo.com/");
       await page.getByRole("button", { name: "Site ekle" }).click();
-      await page.getByText("https://www.saucedemo.com").waitFor();
+      await page
+        .locator(".ai-provider-item")
+        .getByText("https://www.saucedemo.com")
+        .waitFor();
       await page.screenshot({
         path: join(evidence, "settings.png"),
         fullPage: true,
@@ -298,7 +301,10 @@ test(
           )?.value === "",
       );
       await page.getByRole("button", { name: "Ayarlar", exact: true }).click();
-      await page.getByText("https://example.com", { exact: true }).waitFor();
+      await page
+        .locator(".ai-provider-item")
+        .getByText("https://example.com", { exact: true })
+        .waitFor();
       assert.deepEqual(errors, []);
     } finally {
       await browser?.close();

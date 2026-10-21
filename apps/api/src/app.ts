@@ -187,6 +187,11 @@ export async function createApp(store = new Store()) {
           "SELECT count(*) AS total,coalesce(sum(status='passed'),0) AS passed,coalesce(sum(status IN ('queued','running')),0) AS pending FROM ai_suite_runs WHERE org_id=? AND project_id=?",
         )
         .get(user.orgId, projectId),
+      aiTestRunCounts: store.db
+        .prepare(
+          "SELECT count(*) AS total,coalesce(sum(status='passed'),0) AS passed,coalesce(sum(status IN ('queued','running')),0) AS pending FROM ai_test_runs WHERE org_id=? AND project_id=?",
+        )
+        .get(user.orgId, projectId),
       runs,
       audit,
     };

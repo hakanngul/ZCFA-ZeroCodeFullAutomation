@@ -77,6 +77,7 @@ type ProjectData = {
   tests: CanonicalTest[];
   aiSuiteCount: number;
   aiRunCounts: { total: number; passed: number; pending: number };
+  aiTestRunCounts: { total: number; passed: number; pending: number };
   runs: RunSummary[];
   audit: { action: string; object_id: string; created_at: string }[];
 };
@@ -291,10 +292,13 @@ export default function Workspace() {
   const latestScan = data?.scans[0];
   const successful =
     (data?.runs.filter((r) => r.status === "passed").length ?? 0) +
-    (data?.aiRunCounts.passed ?? 0);
+    (data?.aiRunCounts.passed ?? 0) +
+    (data?.aiTestRunCounts.passed ?? 0);
   const pending =
     (data?.runs.filter((r) => ["queued", "running"].includes(r.status))
-      .length ?? 0) + (data?.aiRunCounts.pending ?? 0);
+      .length ?? 0) +
+    (data?.aiRunCounts.pending ?? 0) +
+    (data?.aiTestRunCounts.pending ?? 0);
   const navigation: {
     id: Section;
     title: string;
@@ -325,7 +329,7 @@ export default function Workspace() {
       id: "runs",
       title: "Çalıştırmalar",
       icon: Play,
-      count: data?.runs.length,
+      count: data ? data.runs.length + data.aiTestRunCounts.total : undefined,
     },
     { id: "settings", title: "Ayarlar", icon: Settings2 },
   ];
