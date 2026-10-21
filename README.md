@@ -222,6 +222,26 @@ gerçekten çalışmazsa adım `CHECK_NOT_RUN`/`ACTION_FAILED` ile başarısız 
 asla PASS sayılmaz. Model bu kontrolleri yalnız istek açıkça kalite,
 erişilebilirlik, bağlantı veya konsol kontrolü istediğinde ekler.
 
+## Raporlama
+
+Çalıştırmalar ekranının üstündeki **Tüm çalıştırmalar** kartı klasik testleri,
+AI suite çalıştırmalarını ve kalıcı AI testi çalıştırmalarını tek listede
+gösterir; test, durum ve tarih aralığına göre (UTC gün) sunucu tarafında
+filtrelenir ve sayfalanır. Her satırda süre, kısa hata nedeni ve **HTML raporu
+indir** bağlantısı var. Rapor tek dosyadır: test adı/sürümü, plan checksum'ı
+(AI suite için suite tanımı SHA-256), adımlar ve durumları, kalite bulguları ve
+SHA-256'sı doğrulanan adım/senaryo ekran görüntüleri (base64). Girdi değerleri
+rapora yazılmaz; gizli test verileri ayrıca `{{KEY}}`'e çevrilir. PDF dışa
+aktarımı yok.
+
+Testler ekranındaki **Test istatistikleri** kartı her test için son N (10/20/50,
+varsayılan 20) tamamlanmış çalıştırmanın başarı oranını, ortalama süresini ve son
+hata nedenini gösterir. **Dalgalı** rozeti: aynı test sürümünün son 10 tamamlanmış
+çalıştırmasında hem başarılı hem başarısız sonuç varsa verilir; altyapı hatası,
+engellenen, zaman aşımı ve iptal edilen çalıştırmalar gösterilir ama dalgalanma
+saymaz. Kurallar `packages/domain/src/reporting.ts` içinde saf fonksiyonlardır
+(`tests/reporting.test.ts`).
+
 ## Mimari
 
 - `apps/web`: Next.js Türkçe çalışma alanı; business / flow / technical projeksiyonları.

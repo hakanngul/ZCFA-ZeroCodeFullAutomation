@@ -51,6 +51,7 @@ import { AiElementList } from "./components/ai-element-list";
 import { AiAssistant } from "./components/ai-assistant";
 import { AiSuiteList } from "./components/ai-suite-list";
 import { PromotedRuns, PromotedTests } from "./components/promoted-tests";
+import { RunHistory, TestStats } from "./components/reporting";
 
 type Scan = {
   id: string;
@@ -1067,6 +1068,7 @@ export default function Workspace() {
           )}
           {section === "tests" && (
             <>
+              <TestStats projectId={projectId} reloadKey={promotedKey} />
               <AiSuiteList
                 projectId={projectId}
                 canEdit={actor.role !== "viewer"}
@@ -1165,6 +1167,7 @@ export default function Workspace() {
           )}
           {section === "runs" && (
             <>
+              <RunHistory projectId={projectId} />
               <PromotedRuns
                 projectId={projectId}
                 selected={aiTestRunId}

@@ -251,7 +251,7 @@ test(
       });
       await page.getByRole("button", { name: /^Testler/ }).click();
       await page.getByRole("heading", { name: "AI suite’ler" }).waitFor();
-      await page.getByText("Giriş doğrulama suite").waitFor();
+      await page.getByText(/^Giriş doğrulama suite ·/).waitFor();
       await page.screenshot({
         path: join(evidence, "tests-list.png"),
         fullPage: true,

@@ -1685,3 +1685,62 @@ td small {
     transition: none !important;
   }
 }
+
+/* Reporting: unified run history and test stats */
+.report-card {
+  margin-bottom: 18px;
+}
+.report-card > .hint {
+  padding: 14px 24px 0;
+}
+.report-card .card-heading h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.report-filters {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 12px;
+  padding: 14px 24px;
+}
+.report-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px 24px 18px;
+  font-size: 12px;
+  color: #6f7d68;
+}
+.report-reason {
+  max-width: 280px;
+  font-size: 12px;
+  word-break: break-word;
+}
+.report-reason small {
+  display: block;
+}
+.report-window {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #8a9782;
+}
+.report-window select {
+  border: 1px solid #e2e8db;
+  border-radius: 5px;
+  padding: 3px 6px;
+}
+.badge.flaky {
+  color: #9a5b1e;
+  background: #fff3e2;
+  border-color: #f2dcbc;
+  margin-top: 4px;
+}
+@media (max-width: 760px) {
+  .report-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+}

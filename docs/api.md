@@ -92,6 +92,24 @@ uygulamayı açtığı anlamına gelmez: deneme canlı yerel demo hedefinde yap�
 | GET/POST   | /v1/projects/:projectId/test-variables                             | Test verileri; gizli değer yanıtta `null`                            |
 | PUT/DELETE | /v1/projects/:projectId/test-variables/:id                         | Güncelle (boş değer = koru) / sil                                    |
 
+## Raporlama
+
+| Metot | Yol                                                        | Sonuç                                                                                                                                                                          |
+| ----- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET   | /v1/projects/:projectId/reports/runs                       | Klasik, AI suite ve kalıcı AI test çalıştırmaları tek listede; `test=kind:id`, `status`, `from`/`to` (UTC gün, dahil), `limit` ≤100, `offset`; `total` ve satır başına `flaky` |
+| GET   | /v1/projects/:projectId/reports/tests                      | Test başına son `n` (varsayılan 20, ≤100) tamamlanmış çalıştırma: başarı oranı, ortalama süre, son hata nedeni, `flakyVersions`                                                |
+| GET   | /v1/projects/:projectId/reports/runs/:kind/:id/report.html | Tek çalıştırmanın kendi içinde yeterli HTML raporu (indirme); `kind` = `canonical`, `suite`, `ai_test`                                                                         |
+
+Dalgalı (flaky) kuralı: aynı test **sürümünün** son 10 tamamlanmış
+çalıştırmasında en az bir `passed` ve en az bir `failed` varsa sürüm dalgalıdır.
+`infrastructure_error`, `blocked`, `timed_out` ve `cancelled` pencerede kalır ama
+dalgalanma saymaz. Başarı oranı = başarılı / son N tamamlanmış çalıştırma; son
+hata, en yeni başarısız/engellenen/altyapı hatalı çalıştırmadır (iptal hariç).
+HTML rapor yalnız oturumun org/proje kapsamındaki çalıştırmayı açar (aksi 404);
+ekran görüntülerini kayıtlı SHA-256 doğrulandıktan sonra base64 gömer, `fill`
+değerlerini hiç yazmaz ve projedeki gizli test verilerini son bir kez
+`{{KEY}}`'e çevirir. Rapor script içermez (CSP `default-src 'none'`).
+
 `aiSuiteSchema` yalnız `fill`, `click`, `assertVisible`, `assertText`,
 `assertUrl` ve locator'sız sayfa kalite adımlarını (`assertNoConsoleErrors`
 `{ignore?}`, `assertNoBrokenLinks`, `assertAccessible` `{impact?}`) kabul eder;

@@ -1,5 +1,32 @@
 # Devam noktası — 19 Ekim 2026
 
+## 21 Ekim 2026 — Raporlama: birleşik geçmiş, istatistik, dalgalı test, HTML rapor
+
+Çalıştırmalar → **Tüm çalıştırmalar**: klasik `runs`, `ai_suite_runs` ve
+`ai_test_runs` tek `UNION ALL` sorgusunda; test (`kind:id`), durum ve UTC gün
+aralığı filtresi, sunucu tarafı sayfalama (`/v1/projects/:id/reports/runs`).
+Satırda süre, kısa hata nedeni, dalgalı rozeti ve **HTML raporu indir** var.
+Testler → **Test istatistikleri** (`/reports/tests?n=20`): son N tamamlanmış
+çalıştırmada başarı oranı, ortalama süre, son hata nedeni. Dalgalı kuralı
+(`packages/domain/src/reporting.ts`, saf fonksiyon): aynı test sürümünün son 10
+tamamlanmış çalıştırmasında en az bir `passed` ve bir `failed` varsa dalgalı;
+`infrastructure_error`/`blocked`/`timed_out`/`cancelled` gösterilir ama
+dalgalanma saymaz. HTML rapor (`/reports/runs/:kind/:id/report.html`): org/proje
+kapsamlı (başka org 404), test adı/sürüm, plan checksum'ı (suite için tanım
+SHA-256), adımlar, bulgular, SHA-256 doğrulanan ekran görüntüleri base64; `fill`
+değerleri yazılmaz, projedeki gizli test verileri son kez `{{KEY}}`'e çevrilir,
+script yok (CSP). Yeni `tests/reporting.test.ts` (3 test): kural/istatistik
+birim testleri, filtre/sayfalama, export yetkisi ve gizli/girdi değeri
+sızmaması; bozuk checksum'lı görüntü gömülmüyor. `assistant-ui` E2E'de yeni
+kartla çakışan metin seçicisi daraltıldı. Gerçek kontrol (`.local/my-data`,
+`pnpm dev`): 5 çalıştırma (4 AI suite, 1 kalıcı AI test) listelendi, hepsi
+başarılı, dalgalı yok. Kanıt: `docs/evidence/reporting/run-history.png`,
+`test-stats.png`. Örnek HTML rapor depoya eklenmedi: metinde gizli değer yok
+ama SauceDemo giriş sayfasının ekran görüntüsünde sitenin kendi gösterdiği
+demo parolası görünüyor. Sınırlar: PDF yok; tarih filtresi UTC; gömülen
+görüntüler hedef sayfanın kendisinin gösterdiği bilgiyi içerebilir (input'lar
+maskeli).
+
 ## 21 Ekim 2026 — Sayfa kalite doğrulamaları
 
 AI suite/kalıcı test şemasına üç locator'sız doğrulama eklendi:
