@@ -207,6 +207,9 @@ export type ElementRow = {
   /** Migration 012: `merged` rows are retired duplicates (never deleted). */
   status?: string;
   merged_into?: string | null;
+  /** Migration 013: last verification of the primary locator. */
+  verification?: string;
+  verified_at?: string | null;
 };
 export function primaryOf(row: ElementRow): LibraryLocator {
   return (
@@ -258,6 +261,8 @@ export function aiElementView(row: ElementRow) {
     fragile: isFragileLibraryLocator(locator),
     status: row.status ?? "active",
     mergedInto: row.merged_into ?? null,
+    verification: row.verification ?? "unverified",
+    verifiedAt: row.verified_at ?? null,
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at,
   };

@@ -1,16 +1,22 @@
 import { resolve } from "node:path";
 import {
   approvedLibraryElements,
+  bindSuiteElements,
+  createSuite,
   draftIdOf,
   localDir,
   projectSettings,
   recordHealSuggestions,
-  recordObservedElements,
+  recordRunVerification,
   resolveElementPins,
   Store,
   suitePins,
   type Job,
 } from "../../../packages/storage/src/index";
+import {
+  verifyCaseRun,
+  type CaseRunSnapshot,
+} from "../../../packages/assistant/src/cases";
 import {
   discover,
   execute,
@@ -160,14 +166,8 @@ while (!stopping) {
           .get(job.id, job.lease_token, Date.now());
         if (!valid) return;
         const now = new Date().toISOString();
-        // Library matching keeps ids stable across explorations (ADR 013).
-        recordObservedElements(
-          store.db,
-          job.org_id,
-          job.project_id,
-          inspection.pages,
-          now,
-        );
+        // Elements are registered after generation, and only those the
+        // suite's steps need (ADR 017); the inspection keeps every observation.
         store.db
           .prepare(
             "UPDATE ai_drafts SET status='explored',inspection=? WHERE id=? AND org_id=? AND status='running'",
@@ -276,6 +276,42 @@ while (!stopping) {
           inspection.stopped && inspection.stopped.reason !== "done"
             ? ` Keşif erken durdu: ${inspection.stopped.message}`
             : "";
+        // The generated suite becomes a persistent draft in Tests whose
+        // element steps bind library records by id (ADR 017). Compared
+        // drafts keep their own approval flow and create no suite.
+        let saved = "";
+        if (!compared) {
+          const now = new Date().toISOString();
+          const bound = bindSuiteElements(
+            store.db,
+            job.org_id,
+            job.project_id,
+            inspection.pages,
+            suite,
+            now,
+          );
+          createSuite(
+            store.db,
+            { userId: "ai-assistant", orgId: job.org_id, role: "admin" },
+            job.project_id,
+            {
+              title: suite.title,
+              targetUrl: suite.targetUrl,
+              source: "ai",
+              draftId: payload.draftId,
+              prompt: payload.prompt,
+              model: draft.model as string,
+              notes: [
+                ...(early ? [early.trim()] : []),
+                ...bound.warnings,
+                `Elementler: ${bound.stats.created} yeni, ${bound.stats.reused} mevcut kayıt kullanıldı${bound.stats.suggested ? `, ${bound.stats.suggested} onaylı elemente öneri eklendi` : ""}${bound.stats.unresolved ? `, ${bound.stats.unresolved} adım doğrulanamayan element nedeniyle eksik` : ""}.`,
+              ],
+              cases: bound.cases,
+            },
+            now,
+          );
+          saved = ` Tests ekranına taslak suite olarak kaydedildi (${bound.stats.created} yeni, ${bound.stats.reused} mevcut element${bound.stats.unresolved ? `; ${bound.stats.unresolved} adım eksik` : ""}).`;
+        }
         store.db
           .prepare("INSERT INTO ai_messages VALUES (?,?,?,?,?)")
           .run(
@@ -285,8 +321,8 @@ while (!stopping) {
             compared
               ? `${draft.model}: ${suite.scenarios.length} senaryo taslağı hazır (karşılaştırma). Kaydetmeden önce inceleyip onaylayın.`
               : payload.revision
-                ? `Düzeltilmiş taslak hazır: ${suite.scenarios.length} senaryo. Kaydetmeden önce düzenleyip onaylayın.`
-                : `${inspection.pages.length} sayfa incelendi (${inspection.path.length} keşif adımı, ${inspection.elements.length} element). ${suite.scenarios.length} senaryo taslağı hazır.${early} Kaydetmeden önce düzenleyip onaylayın.`,
+                ? `Düzeltilmiş taslak hazır: ${suite.scenarios.length} senaryo.${saved} Kaydetmeden önce düzenleyip onaylayın.`
+                : `${inspection.pages.length} sayfa incelendi (${inspection.path.length} keşif adımı, ${inspection.elements.length} element). ${suite.scenarios.length} senaryo taslağı hazır.${early}${saved} Çalıştırmadan önce düzenleyip onaylayın.`,
             new Date().toISOString(),
           );
         store.db
@@ -512,6 +548,99 @@ while (!stopping) {
           .prepare("UPDATE jobs SET status='done' WHERE id=? AND lease_token=?")
           .run(job.id, job.lease_token);
       });
+    } else if (job.kind === "case_run") {
+      const row = store.db
+        .prepare(
+          "SELECT snapshot,checksum FROM test_case_runs WHERE id=? AND org_id=? AND project_id=?",
+        )
+        .get(job.id, job.org_id, job.project_id);
+      if (!row)
+        throw new DomainError("NOT_FOUND", "Test case çalışması bulunamadı.");
+      const snapshot = JSON.parse(row.snapshot as string) as CaseRunSnapshot;
+      let status: string, result: unknown;
+      let elements: ResolvedElements = {};
+      try {
+        if (snapshot.checksum !== row.checksum)
+          throw new DomainError(
+            "PLAN_CHECKSUM_MISMATCH",
+            "Çalıştırma planı bütünlüğü doğrulanamadı.",
+          );
+        // Locators come from the element revisions frozen in the snapshot.
+        const verified = verifyCaseRun(snapshot);
+        elements = verified.elements;
+        store.extendLease(job, suiteLeaseMs(verified.suite.scenarios.length));
+        const outcome = await executeSuite(
+          browser!,
+          verified.suite,
+          resolve(localDir, "artifacts", job.id),
+          store.authorizedOrigins(job.org_id),
+          loadVariables(
+            store.db,
+            job.org_id,
+            job.project_id,
+            new URL(verified.suite.targetUrl).origin,
+          ),
+          elements,
+          projectSettings(store.db, job.org_id, job.project_id),
+        );
+        // A screenshot alone is not a PASS: every step and assertion must pass.
+        status =
+          outcome.status === "passed" &&
+          !evidencedPass(
+            snapshot as unknown as PromotedPlan,
+            outcome as Parameters<typeof evidencedPass>[1],
+          )
+            ? "infrastructure_error"
+            : outcome.status;
+        result =
+          status === "infrastructure_error"
+            ? { ...outcome, code: "INVALID_PASS_EVIDENCE" }
+            : outcome;
+      } catch (error) {
+        if (!(error instanceof DomainError)) throw error;
+        status =
+          error.code === "TARGET_BLOCKED" ? "blocked" : "infrastructure_error";
+        result = { code: error.code, message: error.message, results: [] };
+      }
+      store.transaction(() => {
+        const valid = store.db
+          .prepare(
+            "SELECT id FROM jobs WHERE id=? AND status='running' AND lease_token=? AND lease_until>=?",
+          )
+          .get(job.id, job.lease_token, Date.now());
+        if (!valid) return;
+        const updated = store.db
+          .prepare(
+            "UPDATE test_case_runs SET status=?,result=?,finished_at=? WHERE id=? AND org_id=? AND status='running'",
+          )
+          .run(
+            status,
+            JSON.stringify(result),
+            new Date().toISOString(),
+            job.id,
+            job.org_id,
+          );
+        if (updated.changes) {
+          recordHealSuggestions(
+            store.db,
+            job.org_id,
+            job.project_id,
+            "test_case_run",
+            job.id,
+            result as Parameters<typeof recordHealSuggestions>[5],
+            elements,
+          );
+          recordRunVerification(
+            store.db,
+            job.org_id,
+            job.project_id,
+            caseRunVerification(snapshot, result),
+          );
+        }
+        store.db
+          .prepare("UPDATE jobs SET status='done' WHERE id=? AND lease_token=?")
+          .run(job.id, job.lease_token);
+      });
     } else {
       const run = store.db
         .prepare(
@@ -608,6 +737,22 @@ while (!stopping) {
           .prepare("UPDATE jobs SET status='done' WHERE id=? AND lease_token=?")
           .run(job.id, job.lease_token);
       });
+    else if (job.kind === "case_run")
+      store.transaction(() => {
+        store.db
+          .prepare(
+            "UPDATE test_case_runs SET status='infrastructure_error',result=?,finished_at=? WHERE id=? AND org_id=? AND status='running'",
+          )
+          .run(
+            JSON.stringify({ code: "WORKER_ERROR", results: [] }),
+            new Date().toISOString(),
+            job.id,
+            job.org_id,
+          );
+        store.db
+          .prepare("UPDATE jobs SET status='done' WHERE id=? AND lease_token=?")
+          .run(job.id, job.lease_token);
+      });
     else if (job.kind === "locator_check")
       store.finishLocatorCheck(
         job,
@@ -659,4 +804,49 @@ function saveGeneration(
       run.metrics.totalTokens,
       new Date().toISOString(),
     );
+}
+
+/**
+ * Library verification from a case run: an element step that located its
+ * element marks it verified, ELEMENT_NOT_FOUND / AMBIGUOUS_ELEMENT mark it
+ * failed. Healed steps say nothing about the primary and are skipped.
+ */
+function caseRunVerification(snapshot: CaseRunSnapshot, raw: unknown) {
+  const result = raw as {
+    results?: {
+      steps?: {
+        element?: string;
+        status?: string;
+        code?: string;
+        healed?: unknown;
+      }[];
+    }[];
+  };
+  const byRef = new Map(snapshot.elements.map((e) => [e.ref, e]));
+  const outcomes = new Map<
+    string,
+    { elementId: string; revision: number; found: boolean }
+  >();
+  for (const scenario of result.results ?? [])
+    for (const step of scenario.steps ?? []) {
+      const element = step.element ? byRef.get(step.element) : undefined;
+      if (!element || step.healed) continue;
+      // A failed assertion still located the element; other failures
+      // (unavailable element, missing variable, timeout) say nothing.
+      const found =
+        step.status === "passed" || step.code === "ASSERTION_FAILED"
+          ? true
+          : step.code === "ELEMENT_NOT_FOUND" ||
+              step.code === "AMBIGUOUS_ELEMENT"
+            ? false
+            : undefined;
+      if (found === undefined) continue;
+      const before = outcomes.get(element.elementId)?.found ?? true;
+      outcomes.set(element.elementId, {
+        elementId: element.elementId,
+        revision: element.revision,
+        found: before && found,
+      });
+    }
+  return [...outcomes.values()];
 }

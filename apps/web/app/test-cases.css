@@ -1,0 +1,322 @@
+/* Tests: suites, cases and the step editor (ADR 017). */
+.tc-card {
+  margin-bottom: 18px;
+}
+.tc-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.tc-intro {
+  margin: 14px 24px 4px;
+}
+.tc-notice,
+.tc-error {
+  margin: 10px 24px;
+}
+.tc-new-suite {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr auto;
+  align-items: end;
+  gap: 12px;
+  padding: 14px 24px;
+  border-bottom: 1px solid #edf0ea;
+}
+.tc-suite {
+  border-top: 1px solid #edf0ea;
+}
+.tc-suite-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 24px;
+}
+.tc-suite-toggle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  min-width: 0;
+}
+.tc-suite-toggle strong {
+  font-size: 13px;
+}
+.tc-suite-toggle small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.tc-suite-actions,
+.tc-editor-actions,
+.tc-editor-badges,
+.tc-run-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.tc-suite-actions .secondary,
+.tc-editor-actions .secondary,
+.tc-editor-actions .primary,
+.tc-editor-badges .secondary,
+.tc-run-list .secondary {
+  padding: 8px 11px;
+}
+.badge.tc-ai {
+  color: #5d6fa7;
+  background: #f0f2fb;
+  border-color: #dfe3f4;
+}
+.tc-prompt,
+.tc-notes {
+  margin: 0 24px 10px;
+  color: #5f6f69;
+  font-size: 12px;
+}
+.tc-notes {
+  padding-left: 18px;
+}
+.tc-notes li {
+  margin: 3px 0;
+}
+.tc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.tc-table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 10px;
+  color: #8a9782;
+  padding: 8px 10px;
+  border-bottom: 1px solid #edf0ea;
+}
+.tc-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid #f1f4ee;
+  vertical-align: top;
+}
+.tc-table > thead > tr > th:first-child,
+.tc-table > tbody > tr > td:first-child {
+  padding-left: 24px;
+}
+.tc-table td small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: 3px;
+}
+.tc-row-selected td {
+  background: #f4f8f1;
+}
+.tc-editor {
+  margin: 4px 16px 18px;
+  padding: 18px 20px;
+  border: 1px solid #dfe8da;
+  border-radius: 9px;
+  background: #fcfdfb;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.tc-editor-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+.tc-editor-head h3 {
+  margin: 4px 0;
+  font-size: 15px;
+}
+.tc-editor-head small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.tc-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.tc-editor textarea {
+  border: 1px solid #e2e8db;
+  border-radius: 6px;
+  background: #fdfefb;
+  padding: 10px 11px;
+  width: 100%;
+  color: #455c3e;
+  font: inherit;
+  font-size: 12px;
+  resize: vertical;
+}
+.tc-data {
+  border: 1px solid #e8ede4;
+  border-radius: 7px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tc-data legend {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 4px;
+}
+.tc-data small,
+.tc-steps-head small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.tc-data-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: 8px;
+}
+.tc-editor input,
+.tc-editor select {
+  border: 1px solid #e2e8db;
+  border-radius: 6px;
+  background: #fff;
+  padding: 8px 9px;
+  width: 100%;
+  font-size: 12px;
+  color: #455c3e;
+}
+.tc-data-row .secondary,
+.tc-step-actions .secondary {
+  padding: 7px 8px;
+}
+.tc-inline {
+  width: auto;
+  justify-content: flex-start;
+  padding: 6px 0;
+}
+.tc-steps {
+  border: 1px solid #e8ede4;
+  border-radius: 7px;
+  overflow: hidden;
+}
+.tc-steps-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  background: #f7faf5;
+  border-bottom: 1px solid #edf0ea;
+}
+.tc-step-table > tbody > tr > td:first-child,
+.tc-step-table > thead > tr > th:first-child {
+  padding-left: 14px;
+  width: 28px;
+}
+.tc-steps > .tc-inline {
+  margin-left: 14px;
+}
+.tc-element-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 220px;
+}
+.tc-step-actions {
+  white-space: nowrap;
+}
+.tc-step-actions .secondary + .secondary {
+  margin-left: 4px;
+}
+.tc-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--green);
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tc-warning {
+  color: #a26a2d;
+  font-size: 11px;
+}
+.tc-issues {
+  margin: 0;
+  padding: 10px 12px 10px 28px;
+  background: #fbf5e8;
+  border: 1px solid #ece2c8;
+  border-radius: 7px;
+  color: #8a6a32;
+  font-size: 12px;
+}
+.tc-runs {
+  border-top: 1px solid #edf0ea;
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tc-runs > small {
+  color: var(--muted);
+}
+.tc-run-active {
+  background: var(--soft);
+}
+.tc-run {
+  border: 1px solid #e8ede4;
+  border-radius: 7px;
+  padding: 10px 12px;
+  background: #fff;
+}
+.tc-run-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.tc-run-head small {
+  color: var(--muted);
+}
+.tc-run-steps {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  font-size: 12px;
+}
+.tc-run-steps li {
+  margin: 5px 0;
+}
+.tc-shot {
+  display: block;
+  max-width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  object-position: left top;
+  margin-top: 10px;
+  border: 1px solid #e3e8e4;
+  border-radius: 6px;
+}
+.tc-usage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tc-usage ul {
+  margin: 0;
+  padding-left: 18px;
+}
+@media (max-width: 900px) {
+  .tc-grid,
+  .tc-new-suite {
+    grid-template-columns: 1fr;
+  }
+  .tc-suite-head,
+  .tc-editor-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

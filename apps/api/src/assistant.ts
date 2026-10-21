@@ -41,6 +41,7 @@ import { registerSelfHealing } from "./self-healing";
 import { registerTestVariables } from "./test-variables";
 import { registerReporting } from "./reporting";
 import { comparisonView, registerComparisons } from "./comparisons";
+import { registerTestCases } from "./test-cases";
 
 const idParam = z.object({ id: z.uuid() });
 const targetOriginInput = z.object({ url: z.url().max(1000) }).strict();
@@ -50,6 +51,8 @@ const elementQuery = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(500),
   offset: z.coerce.number().int().min(0).max(100000).default(0),
   approved: z.enum(["true", "false"]).optional(),
+  // Element picker of a suite: only that site's elements.
+  origin: z.url().max(1000).optional(),
 });
 // Positional CSS paths break when the page layout shifts.
 const fragileSql =
@@ -218,6 +221,10 @@ export function registerAssistant(
     }
     if (query.approved)
       where.push(`approved=${query.approved === "true" ? 1 : 0}`);
+    if (query.origin) {
+      where.push("origin=?");
+      args.push(new URL(query.origin).origin);
+    }
     const pages = (
       store.db
         .prepare(
@@ -748,8 +755,11 @@ export function registerAssistant(
               "Locator incelenen sayfalarda yok.",
             );
           if (
-            action.kind === "assertUrl" &&
-            new URL(action.expected).origin !== new URL(suite.targetUrl).origin
+            (action.kind === "assertUrl" &&
+              new URL(action.expected).origin !==
+                new URL(suite.targetUrl).origin) ||
+            (action.kind === "navigate" &&
+              new URL(action.url).origin !== new URL(suite.targetUrl).origin)
           )
             throw new DomainError("TARGET_BLOCKED", "URL hedef dışı.");
         }
@@ -1007,4 +1017,5 @@ export function registerAssistant(
   registerTestVariables(app, store, scoped);
   registerReporting(app, store, scoped);
   registerComparisons(app, store, scoped, { getProvider, resolveTarget });
+  registerTestCases(app, store, scoped);
 }

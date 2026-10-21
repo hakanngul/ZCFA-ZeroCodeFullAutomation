@@ -21,8 +21,10 @@ import {
   migrateElementMerge,
   migrateSuggestedAlternatives,
 } from "./ai-elements";
+import { migrateElementVerification } from "./test-cases";
 export * from "./ai-elements";
 export * from "./self-healing";
+export * from "./test-cases";
 
 export const localDir = resolve(process.env.ZC_DATA_DIR ?? ".local");
 export type Job = {
@@ -36,7 +38,8 @@ export type Job = {
     | "ai_analysis"
     | "ai_generate"
     | "ai_suite"
-    | "ai_test_run";
+    | "ai_test_run"
+    | "case_run";
   payload: string;
   lease_token: string;
   lease_until: number;
@@ -211,6 +214,16 @@ export class Store {
       readFileSync(
         new URL(
           "../../../infra/migrations/012_self_healing.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    migrateElementVerification(this.db);
+    this.db.exec(
+      readFileSync(
+        new URL(
+          "../../../infra/migrations/013_test_cases.sql",
           import.meta.url,
         ),
         "utf8",
@@ -519,6 +532,17 @@ export class Store {
               job.id,
               job.org_id,
             );
+        else if (job.kind === "case_run")
+          this.db
+            .prepare(
+              "UPDATE test_case_runs SET status='infrastructure_error',result=?,finished_at=? WHERE id=? AND org_id=? AND status='running'",
+            )
+            .run(
+              JSON.stringify({ code: "WORKER_LEASE_EXPIRED", results: [] }),
+              new Date().toISOString(),
+              job.id,
+              job.org_id,
+            );
         else if (job.kind === "locator_check")
           this.db
             .prepare(
@@ -567,7 +591,9 @@ export class Store {
                 ? "ai_suite_runs"
                 : job.kind === "ai_test_run"
                   ? "ai_test_runs"
-                  : "scans";
+                  : job.kind === "case_run"
+                    ? "test_case_runs"
+                    : "scans";
       this.db
         .prepare(
           `UPDATE ${table} SET status='running' WHERE id=? AND org_id=? AND status='queued'`,

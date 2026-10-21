@@ -73,10 +73,13 @@ export function recordHealSuggestions(
   db: DatabaseSync,
   orgId: string,
   projectId: string,
-  runKind: "ai_suite" | "ai_test_run",
+  runKind: "ai_suite" | "ai_test_run" | "test_case_run",
   runId: string,
   result: HealedResult,
-  elements: Record<string, { elementId?: string } | { unavailable: string }>,
+  elements: Record<
+    string,
+    { elementId?: string; elementKey?: string } | { unavailable: string }
+  >,
   now = new Date().toISOString(),
 ) {
   const groups = new Map<
@@ -104,6 +107,11 @@ export function recordHealSuggestions(
       const elementId =
         bound && "elementId" in bound ? bound.elementId : undefined;
       if (!elementId) continue;
+      // Test case runs refer to elements by a plan-local ref (`e1`).
+      const elementKey =
+        bound && "elementKey" in bound && bound.elementKey
+          ? bound.elementKey
+          : step.element;
       const key = JSON.stringify([
         elementId,
         step.elementRevision,
@@ -114,7 +122,7 @@ export function recordHealSuggestions(
       else
         groups.set(key, {
           elementId,
-          elementKey: step.element,
+          elementKey,
           revision: step.elementRevision,
           primary: step.healed.primary,
           locator: step.healed.locator,

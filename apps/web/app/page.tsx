@@ -52,6 +52,7 @@ import { AiAssistant } from "./components/ai-assistant";
 import { AiSuiteList } from "./components/ai-suite-list";
 import { PromotedRuns, PromotedTests } from "./components/promoted-tests";
 import { RunHistory, TestStats } from "./components/reporting";
+import { TestSuites } from "./components/test-suites";
 
 type Scan = {
   id: string;
@@ -152,6 +153,9 @@ export default function Workspace() {
   const [run, setRun] = useState<RunDetail | null>(null);
   const [promotedKey, setPromotedKey] = useState(0);
   const [aiTestRunId, setAiTestRunId] = useState<string | null>(null);
+  // Step → element and element → test case navigation (ADR 017).
+  const [focusElement, setFocusElement] = useState("");
+  const [focusCase, setFocusCase] = useState("");
   const [ready, setReady] = useState(false);
   const refresh = useCallback(async () => {
     if (projectId) setData(await api<ProjectData>(`/v1/projects/${projectId}`));
@@ -1056,7 +1060,15 @@ export default function Workspace() {
           )}
           {section === "elements" && (
             <>
-              <AiElementList projectId={projectId} />
+              <AiElementList
+                projectId={projectId}
+                focusId={focusElement}
+                onFocusHandled={() => setFocusElement("")}
+                onOpenCase={(caseId) => {
+                  setFocusCase(caseId);
+                  setSection("tests");
+                }}
+              />
               <ElementRegistry
                 projectId={projectId}
                 model={data?.model ?? null}
@@ -1068,6 +1080,17 @@ export default function Workspace() {
           )}
           {section === "tests" && (
             <>
+              <TestSuites
+                projectId={projectId}
+                canEdit={actor.role !== "viewer"}
+                focusCaseId={focusCase}
+                onFocusHandled={() => setFocusCase("")}
+                onOpenElement={(elementId) => {
+                  setFocusElement(elementId);
+                  setSection("elements");
+                }}
+                onOpenRuns={() => setSection("runs")}
+              />
               <TestStats projectId={projectId} reloadKey={promotedKey} />
               <AiSuiteList
                 projectId={projectId}

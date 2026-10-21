@@ -31,6 +31,9 @@ export type AiElement = {
   /** `merged` = retired duplicate ("Birleştir", ADR 016). */
   status?: string;
   mergedInto?: string | null;
+  /** Last verification of the primary locator (ADR 017). */
+  verification?: string;
+  verifiedAt?: string | null;
   lastSeenAt: string;
 };
 type HistoryRow = {
@@ -96,11 +99,14 @@ export function AiElementEditor({
   onSaved,
   onClose,
   onMerged,
+  onOpenCase,
 }: {
   projectId: string;
   element: AiElement;
   onSaved: (element: AiElement) => void;
   onClose: () => void;
+  /** Opens a test case that uses this element (Tests). */
+  onOpenCase?: (caseId: string) => void;
   /** The element was retired into `target` ("Birleştir"). */
   onMerged?: (target: AiElement) => void;
 }) {
@@ -417,6 +423,12 @@ export function AiElementEditor({
           }}
         />
       )}
+      <ElementCaseUsage
+        projectId={projectId}
+        elementId={element.id}
+        revision={base.revision}
+        onOpenCase={onOpenCase}
+      />
       <ElementImpact
         projectId={projectId}
         elementId={element.id}
@@ -759,6 +771,78 @@ function MergeElement({
       </button>
       {message && <p role="status">{message}</p>}
       {error && <p role="alert">{error}</p>}
+    </section>
+  );
+}
+
+type CaseUsage = {
+  caseId: string;
+  caseTitle: string;
+  caseRevision: number;
+  suiteId: string;
+  suiteTitle: string;
+  approval: string;
+  steps: number[];
+  pinnedRevision: number | null;
+  currentRevision: number;
+  stale: boolean;
+};
+/**
+ * "Kullanan test case'leri" (ADR 017): cases whose steps are bound to this
+ * element; approved cases show the pinned revision a change would leave behind.
+ */
+export function ElementCaseUsage({
+  projectId,
+  elementId,
+  revision,
+  onOpenCase,
+}: {
+  projectId: string;
+  elementId: string;
+  revision: number;
+  onOpenCase?: (caseId: string) => void;
+}) {
+  const [rows, setRows] = useState<CaseUsage[] | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    void api<{ cases: CaseUsage[] }>(
+      `/v1/projects/${projectId}/ai/elements/${elementId}/usage`,
+    )
+      .then((data) => setRows(data.cases))
+      .catch((failure) => setError(String(failure)));
+  }, [projectId, elementId, revision]);
+  return (
+    <section className="ai-element-impact" aria-label="Kullanan test case'leri">
+      <strong>Kullanan test case'leri ({rows?.length ?? 0})</strong>
+      <small>
+        Bu elemente bağlı adımı olan case'ler. Onaylı case'ler onaydaki sürümü
+        kullanır; element değişince case yeniden onaylanana kadar eski sürümle
+        çalışır.
+      </small>
+      {error && <small role="alert">{error}</small>}
+      {rows && !rows.length && (
+        <small>Bu elementi kullanan test case yok.</small>
+      )}
+      <ul>
+        {(rows ?? []).map((row) => (
+          <li key={row.caseId}>
+            <b>{row.caseTitle}</b> · {row.suiteTitle} · adım{" "}
+            {row.steps.join(", ")} ·{" "}
+            {row.approval === "approved"
+              ? `onaylı, pinli v${row.pinnedRevision}${row.stale ? ` → güncel v${row.currentRevision} (yeniden onay gerekir)` : ""}`
+              : "taslak"}{" "}
+            {onOpenCase && (
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => onOpenCase(row.caseId)}
+              >
+                Case'i aç
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

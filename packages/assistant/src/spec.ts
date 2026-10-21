@@ -57,6 +57,17 @@ export const aiActionSchema = z.discriminatedUnion("kind", [
     .object({ kind: z.literal("click"), ...target })
     .strict()
     .refine(exactlyOneTarget, targetIssue),
+  // Chooses an <option> by its value or visible label.
+  z
+    .object({
+      kind: z.literal("select"),
+      ...target,
+      value: z.string().min(1).max(200),
+    })
+    .strict()
+    .refine(exactlyOneTarget, targetIssue),
+  // Same-origin page navigation; needs no element.
+  z.object({ kind: z.literal("navigate"), url: z.url().max(1000) }).strict(),
   z
     .object({ kind: z.literal("assertVisible"), ...target })
     .strict()
@@ -137,6 +148,27 @@ export const aiSuiteSchema = z
               .min(3)
               .max(suiteLimits.scenarioTitleLength),
             category: z.enum(["positive", "negative", "edge"]),
+            // Test case documentation (ADR 017); optional for older suites.
+            description: z.string().trim().max(500).optional(),
+            preconditions: z
+              .array(z.string().trim().min(1).max(200))
+              .max(10)
+              .optional(),
+            testData: z
+              .array(
+                z
+                  .object({
+                    name: z.string().trim().min(1).max(60),
+                    value: z.string().max(200),
+                  })
+                  .strict(),
+              )
+              .max(20)
+              .optional(),
+            expectedResults: z
+              .array(z.string().trim().min(1).max(300))
+              .max(10)
+              .optional(),
             actions: z
               .array(aiActionSchema)
               .min(1)

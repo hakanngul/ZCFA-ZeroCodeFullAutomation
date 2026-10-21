@@ -1,5 +1,75 @@
 # Devam noktası — 19 Ekim 2026
 
+## 21 Ekim 2026 — Keşiften kalıcı taslak suite; adımlar elementlere id ile bağlı
+
+ADR 017. Ayrışma noktaları:
+
+- `ai_analysis` gözlenen her öğeyi kütüphaneye yazıyordu.
+- Onaysız elementler taslağa ham locator olarak giriyordu.
+- Taslak yalnız sohbette duruyordu.
+- Doğrulanamayan locator işaretlenmiyordu.
+
+Değişenler:
+
+- **Keşif:** Gözlemlere `unique` eklendi. Keşif artık kütüphaneye yazmıyor.
+- **Element kaydı:** `ai_generate` sonrası `bindSuiteElements` yalnız adımların
+  kullandığı ve tekil doğrulanan düğümleri kaydediyor.
+  - Aynı sayfada eşleşen kayıt yeniden kullanılıyor.
+  - Onaylı kayıt değişmiyor; farklı locator öneri olarak ekleniyor ve
+    `verification=failed` yazılıyor.
+  - Onaysız kayıtta locator değişikliği yeni revizyon (`reobserved`) oluyor.
+  - Doğrulanamayan düğüm kaydedilmiyor; adım `unresolved` kalıyor ve case
+    eksik sayılıyor.
+- **Migration 013:** `test_suites`, `test_cases`, `test_case_elements` ve
+  değişmez `test_case_runs` tabloları; `ai_page_elements` için `verification`
+  ve `verified_at` sütunları.
+- **AI şeması:** `select`, aynı origin'e `navigate` ve senaryo alanları
+  (açıklama, ön koşul, test verisi, beklenen sonuç) eklendi.
+- **Tests ekranı:** Suite ve case listesi (AI rozeti, durum, son çalışma, son
+  düzenleme) ve adım düzenleyici.
+  - Element kütüphaneden seçiliyor.
+  - Kaydet yeni revizyon üretip onayı kaldırıyor; Onayla element
+    revizyonlarını pinliyor.
+  - Case çalıştırılabiliyor, çoğaltılabiliyor ve silinebiliyor.
+  - Run sonucu adım bazlı gösteriliyor, ekran görüntüleri açılabiliyor.
+- **Gezinme:** Adımdan Elementler'e (editör açık) gidiliyor. Element editöründe
+  "Kullanan test case'leri" listesi ve "Case'i aç" var.
+- **Çalıştırma:** Run, case ve pinli element revizyonlarını checksum'lı
+  snapshot olarak saklıyor.
+  - PASS yalnız `evidencedPass` ile veriliyor.
+  - Run sonucu doğrulama durumunu güncelliyor.
+  - Birleşik geçmişe ve HTML rapora `case` türü eklendi.
+- **Korunanlar:** Sohbetteki "Onayla ve kaydet" ve kalıcı test akışları aynen
+  çalışıyor.
+
+Doğrulama (bulut, Node 22 + Chromium 1194): typecheck, format:check,
+`pnpm test` 48/48, build, `test:e2e` 13/13. Yeni testler
+`tests/test-cases.test.ts` altında:
+
+- Yalnız gerekli elementler kaydediliyor, tekrar keşifte mükerrer kayıt yok.
+- Onaylı element değişmiyor, öneri ekleniyor.
+- Doğrulanamayan element için kayıt açılmıyor ve case onaylanamıyor.
+- Snapshot checksum'ı korunuyor.
+- Gerçek worker, fixture ve sahte provider ile uçtan uca akış: keşif → taslak
+  suite → onaysız çalıştırma 409 → düzenleme, 409 ve başka element seçimi →
+  onay → PASS → birleşik geçmiş ve rapor → element düzenlenince `stale` →
+  geçmiş run değişmiyor → ikinci keşifte 5 element korunuyor → çoğalt/sil.
+
+Arayüz kanıtı (sahte provider + Demo Bank fixture, headless Chromium):
+`docs/evidence/test-cases/fixture-*.png`.
+
+**Açık iş:** SauceDemo + gerçek provider kabul testi Mac'te yapılmadı. Bulut
+ortamı saucedemo.com'a ve provider'a erişemiyor; kullanıcı kabul testini sonra
+kendisi yapacak.
+
+- `pnpm dev` yeniden başlatılınca migration 013 `.local/my-data` üzerinde
+  çalışır; önce dev durdurulup DB yedeklenmeli.
+- `.local/my-data/INVALID-partial-backup.sqlite*` dosyaları başarısız bir
+  yedek denemesinden kaldı (VM'den canlı DB'ye `VACUUM INTO`); silinebilir.
+
+Sonraki adımlar: case'ten kalıcı sürüm yayımlama, sayfayı yeniden inceleterek
+element ekleme, Test Runs bölümü ve canlı izleme.
+
 ## 21 Ekim 2026 — Element kütüphanesi Faz 4: self-healing ve "Birleştir"
 
 Plan `wiggly-plotting-teapot` Faz 4 tamamlandı (plan bitti); ADR 016.

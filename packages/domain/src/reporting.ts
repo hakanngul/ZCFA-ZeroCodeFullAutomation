@@ -9,7 +9,7 @@
  */
 export const FLAKY_WINDOW = 10;
 export const STATS_WINDOW = 20;
-export const runKinds = ["canonical", "suite", "ai_test"] as const;
+export const runKinds = ["canonical", "suite", "ai_test", "case"] as const;
 export type RunKind = (typeof runKinds)[number];
 
 const pending = new Set(["queued", "running"]);

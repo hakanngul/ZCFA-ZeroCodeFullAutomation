@@ -51,7 +51,11 @@ WHERE r.org_id=:org AND r.project_id=:project
 UNION ALL
 SELECT 'ai_test',r.id,r.test_id,r.revision,r.status,r.created_at,r.finished_at,t.title,r.result
 FROM ai_test_runs r JOIN ai_tests t ON t.id=r.test_id AND t.revision=r.revision AND t.org_id=r.org_id
-WHERE r.org_id=:org AND r.project_id=:project`;
+WHERE r.org_id=:org AND r.project_id=:project
+UNION ALL
+SELECT 'case',r.id,r.case_id,r.case_revision,r.status,r.created_at,r.finished_at,
+  coalesce(json_extract(r.snapshot,'$.title'),'Test case'),r.result
+FROM test_case_runs r WHERE r.org_id=:org AND r.project_id=:project`;
 
 const statuses = [
   "queued",
@@ -67,7 +71,7 @@ const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const historyQuery = z.object({
   test: z
     .string()
-    .regex(/^(canonical|suite|ai_test):[0-9a-f-]{36}$/)
+    .regex(/^(canonical|suite|ai_test|case):[0-9a-f-]{36}$/)
     .optional(),
   status: z.enum(statuses).optional(),
   from: day.optional(),
@@ -95,6 +99,7 @@ const kindLabels: Record<RunKind, string> = {
   canonical: "Klasik test",
   suite: "AI suite",
   ai_test: "Kalıcı AI testi",
+  case: "Test case",
 };
 const statusLabels: Record<string, string> = {
   queued: "Kuyrukta",
@@ -287,6 +292,7 @@ export function registerReporting(
     element?: string;
     expected?: string;
     impact?: string;
+    url?: string;
   };
   /** Action description without fill values (input data never leaves the run). */
   const describe = (action?: Action) => {
@@ -301,7 +307,9 @@ export function registerReporting(
         ? ` · beklenen: ${action.expected ?? ""}`
         : action.kind === "assertAccessible" && action.impact
           ? ` · eşik: ${action.impact}`
-          : "";
+          : action.kind === "navigate"
+            ? ` · ${action.url ?? ""}`
+            : "";
     return `${action.kind}${target}${expected}`;
   };
   app.get(
@@ -397,7 +405,36 @@ export function registerReporting(
         });
       } else {
         let actions: { title: string; actions: Action[] }[];
-        if (kind === "ai_test") {
+        if (kind === "case") {
+          const run = store.db
+            .prepare(
+              "SELECT snapshot,checksum FROM test_case_runs WHERE id=? AND org_id=? AND project_id=?",
+            )
+            .get(id, user.orgId, projectId)!;
+          const snapshot = JSON.parse(run.snapshot as string) as {
+            targetUrl: string;
+            scenarios: { title: string; actions: Action[] }[];
+            elements: { ref: string; name: string; elementKey: string }[];
+          };
+          checksumLabel = "Çalıştırma anlık görüntüsü SHA-256";
+          checksum = run.checksum as string;
+          target = snapshot.targetUrl;
+          // Plan-local refs are shown as the frozen element name and key.
+          const names = new Map(
+            snapshot.elements.map((e) => [
+              e.ref,
+              `${e.name} (${e.elementKey})`,
+            ]),
+          );
+          actions = snapshot.scenarios.map((s) => ({
+            ...s,
+            actions: s.actions.map((a) =>
+              a.element
+                ? { ...a, element: names.get(a.element) ?? a.element }
+                : a,
+            ),
+          }));
+        } else if (kind === "ai_test") {
           const run = store.db
             .prepare(
               "SELECT plan,checksum FROM ai_test_runs WHERE id=? AND org_id=? AND project_id=?",

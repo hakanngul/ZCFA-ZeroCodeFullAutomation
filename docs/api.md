@@ -105,13 +105,40 @@ uygulamayı açtığı anlamına gelmez: deneme canlı yerel demo hedefinde yap�
 | GET/POST   | /v1/projects/:projectId/test-variables                             | Test verileri; gizli değer yanıtta `null`                                     |
 | PUT/DELETE | /v1/projects/:projectId/test-variables/:id                         | Güncelle (boş değer = koru) / sil                                             |
 
+## Tests: suite ve test case (ADR 017)
+
+| Metot    | Yol                                                               | Sonuç                                                                                                   |
+| -------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| GET/POST | /v1/projects/:projectId/test-suites                               | Suite'ler ve case'leri (durum, eksikler, son çalışma) / elle suite (`title`, yetkili `targetUrl`)       |
+| GET/PUT  | /v1/projects/:projectId/test-suites/:id                           | Suite ayrıntısı / yeniden adlandır (`title`)                                                            |
+| DELETE   | /v1/projects/:projectId/test-suites/:id                           | Suite ve case'leri yumuşak sil; çalıştırma geçmişi korunur                                              |
+| POST     | /v1/projects/:projectId/test-suites/:id/cases                     | Yeni case (`title`, `category`, `definition?`)                                                          |
+| POST     | /v1/projects/:projectId/test-suites/:id/runs                      | Onaylı + eksiksiz case'leri tek `batchId` ile kuyruğa al; diğerleri `skipped` (hiçbiri yoksa 409)       |
+| GET/PUT  | /v1/projects/:projectId/test-cases/:id                            | Case + son 10 çalıştırma / düzenle (`expectedRevision`, 409; yeni revizyon, onay kalkar)                |
+| DELETE   | /v1/projects/:projectId/test-cases/:id                            | Case'i yumuşak sil                                                                                      |
+| POST     | /v1/projects/:projectId/test-cases/:id/duplicate                  | Taslak kopya                                                                                            |
+| POST     | /v1/projects/:projectId/test-cases/:id/approve                    | İnsan onayı (`expectedRevision`): bağlı element revizyonlarını pinler; eksik case 409 `CASE_INCOMPLETE` |
+| POST     | /v1/projects/:projectId/test-cases/:id/runs                       | Onaylı case'i case + element revizyon snapshot'ı ve checksum ile kuyruğa al (onaysız 409)               |
+| GET      | /v1/projects/:projectId/test-case-runs/:id                        | Durum, adım sonuçları, değişmez snapshot (pinli elementler)                                             |
+| GET      | /v1/projects/:projectId/test-case-runs/:id/screenshot             | Senaryo sonu PNG (auth/org/SHA-256 kontrollü)                                                           |
+| GET      | /v1/projects/:projectId/test-case-runs/:id/steps/:step/screenshot | Adım PNG (auth/org/SHA-256 kontrollü)                                                                   |
+| GET      | /v1/projects/:projectId/ai/elements/:id/usage                     | Elementi kullanan case'ler: adım numaraları, pinli/güncel revizyon, `stale`                             |
+
+Case adımı `{id, kind, elementId?, value?, expected?, url?}`; `kind` =
+`navigate`, `click`, `fill`, `select`, `assertVisible`, `assertText`,
+`assertUrl` ve sayfa kalite adımları. `click`/`fill`/`select`/`assertVisible`/
+`assertText` bir kütüphane elementine **id** ile bağlanır; doğrulanamayan
+element için adım `unresolved {reason, message}` taşır ve case eksiktir.
+`GET …/ai/elements?origin=` yalnız o sitenin elementlerini döner (element
+seçici).
+
 ## Raporlama
 
 | Metot | Yol                                                        | Sonuç                                                                                                                                                                          |
 | ----- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | GET   | /v1/projects/:projectId/reports/runs                       | Klasik, AI suite ve kalıcı AI test çalıştırmaları tek listede; `test=kind:id`, `status`, `from`/`to` (UTC gün, dahil), `limit` ≤100, `offset`; `total` ve satır başına `flaky` |
 | GET   | /v1/projects/:projectId/reports/tests                      | Test başına son `n` (varsayılan 20, ≤100) tamamlanmış çalıştırma: başarı oranı, ortalama süre, son hata nedeni, `flakyVersions`                                                |
-| GET   | /v1/projects/:projectId/reports/runs/:kind/:id/report.html | Tek çalıştırmanın kendi içinde yeterli HTML raporu (indirme); `kind` = `canonical`, `suite`, `ai_test`                                                                         |
+| GET   | /v1/projects/:projectId/reports/runs/:kind/:id/report.html | Tek çalıştırmanın kendi içinde yeterli HTML raporu (indirme); `kind` = `canonical`, `suite`, `ai_test`, `case`                                                                 |
 
 Dalgalı (flaky) kuralı: aynı test **sürümünün** son 10 tamamlanmış
 çalıştırmasında en az bir `passed` ve en az bir `failed` varsa sürüm dalgalıdır.

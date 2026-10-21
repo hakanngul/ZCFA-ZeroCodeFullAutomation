@@ -54,7 +54,18 @@ function elementsPath(
   return `/v1/projects/${projectId}/ai/elements?${search}`;
 }
 
-export function AiElementList({ projectId }: { projectId: string }) {
+export function AiElementList({
+  projectId,
+  focusId,
+  onFocusHandled,
+  onOpenCase,
+}: {
+  projectId: string;
+  /** Opened from a test step: search by its key and open the editor. */
+  focusId?: string;
+  onFocusHandled?: () => void;
+  onOpenCase?: (caseId: string) => void;
+}) {
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
   const [pageFilter, setPageFilter] = useState("");
@@ -74,6 +85,21 @@ export function AiElementList({ projectId }: { projectId: string }) {
     const timer = setTimeout(() => setQuery(input.trim()), 250);
     return () => clearTimeout(timer);
   }, [input]);
+
+  useEffect(() => {
+    if (!focusId) return;
+    void api<{ element: AiElement }>(
+      `/v1/projects/${projectId}/ai/elements/${focusId}`,
+    )
+      .then(({ element }) => {
+        setStatus("");
+        setPageFilter("");
+        setInput(element.elementKey);
+        setEditing(element.id);
+      })
+      .catch((failure) => setError(String(failure)))
+      .finally(() => onFocusHandled?.());
+  }, [projectId, focusId, onFocusHandled]);
 
   useEffect(() => {
     let active = true;
@@ -161,12 +187,14 @@ export function AiElementList({ projectId }: { projectId: string }) {
         <span className="eyebrow">AI KEŞFİ</span>
         <h2>Web sitelerinden kaydedilen elementler</h2>
         <p>
-          Chat analizi sırasında görülen DOM öğeleri otomatik saklanır; her öğe
-          için en fazla 3 tekil locator (birincil + alternatifler) tutulur. Yeni
-          analiz, locator'larından biri eşleşen kaydı günceller. Elementi
-          adlandırıp anahtar verin ve onaylayın; locator değişikliği onayı
-          kaldırır. Sıra numarasına (nth-of-type) dayanan CSS yolları{" "}
-          <b>kırılgan</b> olarak işaretlenir.
+          AI keşfinden yalnız üretilen testlerin adımlarında kullanılan ve
+          sayfada tekil doğrulanan öğeler kaydedilir; her öğe için en fazla 3
+          tekil locator (birincil + alternatifler) tutulur. Yeni keşif,
+          locator'larından biri eşleşen kaydı yeniden kullanır; onaylı kaydı
+          değiştirmez, farklı locator'ı öneri olarak ekler. Elementi adlandırıp
+          anahtar verin ve onaylayın; locator değişikliği onayı kaldırır. Sıra
+          numarasına (nth-of-type) dayanan CSS yolları <b>kırılgan</b> olarak
+          işaretlenir.
         </p>
       </div>
       <div className="ai-element-filters">
@@ -329,7 +357,14 @@ export function AiElementList({ projectId }: { projectId: string }) {
                               >
                                 {element.approved ? "Onaylı" : "Bekliyor"}
                               </span>
-                              <small>v{element.revision}</small>
+                              <small>
+                                v{element.revision}
+                                {element.verification === "verified"
+                                  ? " · doğrulandı"
+                                  : element.verification === "failed"
+                                    ? " · doğrulanamadı"
+                                    : ""}
+                              </small>
                             </td>
                             <td>
                               {new Date(element.lastSeenAt).toLocaleString(
@@ -358,6 +393,7 @@ export function AiElementList({ projectId }: { projectId: string }) {
                                 <AiElementEditor
                                   projectId={projectId}
                                   element={element}
+                                  onOpenCase={onOpenCase}
                                   onSaved={replace}
                                   onClose={() => setEditing("")}
                                   onMerged={(target) => {

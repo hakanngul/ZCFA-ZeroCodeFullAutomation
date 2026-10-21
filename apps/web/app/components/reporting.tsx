@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { api } from "../lib/api";
 
-type Kind = "canonical" | "suite" | "ai_test";
+type Kind = "canonical" | "suite" | "ai_test" | "case";
 type HistoryRun = {
   kind: Kind;
   id: string;
@@ -55,6 +55,7 @@ const kindLabels: Record<Kind, string> = {
   canonical: "Klasik",
   suite: "AI suite",
   ai_test: "Kalıcı AI",
+  case: "Test case",
 };
 const statusLabels: Record<string, string> = {
   queued: "Kuyrukta",
