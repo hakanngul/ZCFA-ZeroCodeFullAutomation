@@ -227,6 +227,21 @@ test(
         })
         .waitFor();
       await page.getByText("testId: login-email").waitFor();
+      assert.equal(
+        await page
+          .getByRole("button", { name: /\/login.*4 element/ })
+          .getAttribute("aria-expanded"),
+        "true",
+      );
+      await page
+        .getByPlaceholder("Element adı veya locator")
+        .fill("login-pass");
+      await page
+        .getByText("testId: login-email")
+        .waitFor({ state: "detached" });
+      await page.getByText("testId: login-password").waitFor();
+      await page.getByPlaceholder("Element adı veya locator").fill("");
+      await page.getByText("testId: login-email").waitFor();
       await page.screenshot({
         path: join(evidence, "ai-elements.png"),
         fullPage: true,

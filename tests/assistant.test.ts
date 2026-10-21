@@ -7,7 +7,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { Store } from "../packages/storage/src/index";
-import { authorizedTarget } from "../packages/assistant/src/agent";
+import {
+  authorizedTarget,
+  isFragileLocator,
+  locatorKey,
+  observePage,
+} from "../packages/assistant/src/agent";
+import { launchBrowser } from "../packages/runner/src/index";
 import { createApp } from "../apps/api/src/app";
 import { demoProject } from "../packages/domain/src/index";
 import { admin } from "./support";
@@ -37,6 +43,7 @@ test(
       seenModels: string[] = [];
     let sentMalformed = false;
     const corrections: string[] = [];
+    const suitePrompts: string[] = [];
     const loginStep = (value: string, extra?: Record<string, string>) => ({
       kind: extra ? "fill" : "click",
       locator: { kind: "testId", value },
@@ -99,6 +106,8 @@ test(
         };
         return { choices: [{ message: { content: JSON.stringify(step) } }] };
       }
+      if (body.messages[0]?.content.startsWith("You create"))
+        suitePrompts.push(body.messages[0].content);
       if (body.messages.at(-1)?.content.includes("were not observed"))
         corrections.push(body.model);
       if (body.model === "slow-model")
@@ -374,6 +383,27 @@ test(
         ),
         true,
       );
+      const elementsRoute = `/v1/projects/${demoProject}/ai/elements`;
+      const searched = await call("GET", `${elementsRoute}?q=login-pass`);
+      assert.equal(searched.body.total, 1);
+      assert.equal(searched.body.elements[0].locatorValue, "login-password");
+      assert.equal(searched.body.elements[0].fragile, false);
+      assert.deepEqual(
+        searched.body.pages.map((p: { count: number }) => p.count),
+        [1],
+      );
+      const paged = await call(
+        "GET",
+        `${elementsRoute}?pageUrl=${encodeURIComponent("http://127.0.0.1:4100/login")}&limit=2&offset=2`,
+      );
+      assert.equal(paged.body.total, 4);
+      assert.equal(paged.body.elements.length, 2);
+      assert.equal((await call("GET", `${elementsRoute}?q=%25`)).body.total, 0);
+      assert.equal((await call("GET", `${elementsRoute}?limit=0`)).status, 400);
+      assert.equal(
+        suitePrompts.every((prompt) => prompt.includes('"fragile":true')),
+        true,
+      );
       assert.equal(seenModels.includes("slow-model"), true);
       const bad = structuredClone(detail.drafts[0].definition);
       bad.scenarios[0].actions[0].locator.value = "not-seen";
@@ -613,6 +643,94 @@ test(
       if (previousKey === undefined) delete process.env.ZC_AI_ENCRYPTION_KEY;
       else process.env.ZC_AI_ENCRYPTION_KEY = previousKey;
       rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "AI observation prefers stable unique locators and flags positional CSS",
+  { timeout: 60000 },
+  async () => {
+    const browser = await launchBrowser();
+    try {
+      const page = await browser.newPage();
+      await page.setContent(`<!doctype html><html><head><title>Locator</title></head><body>
+        <main>
+          <button data-testid="dup">Sepete ekle</button>
+          <button data-testid="dup">Kaldır</button>
+          <a data-test="cart" href="#cart">Sepet</a>
+          <a data-test="item" href="#a">Ürün A</a><a data-test="item" href="#b">Ürün B</a>
+          <input id="email" type="email">
+          <label>Parola <input type="password"></label>
+          <input type="search" placeholder="Ürün ara">
+          <h2>Ürünler</h2>
+          <ul><li><span role="button">Seç</span></li><li><span role="button">Seç</span></li></ul>
+          <div data-test="card">Sauce   Labs
+            Backpack carry.allTheThings() with the sleek, streamlined pack</div>
+        </main></body></html>`);
+      const observed = await observePage(page);
+      const byText = (text: string) =>
+        observed.elements.find((e) => e.text === text);
+      assert.deepEqual(byText("Sepete ekle")?.locator, {
+        kind: "role",
+        role: "button",
+        value: "Sepete ekle",
+      });
+      assert.deepEqual(byText("Sepet")?.locator, {
+        kind: "css",
+        value: '[data-test="cart"]',
+      });
+      assert.deepEqual(byText("Ürün A")?.locator, {
+        kind: "role",
+        role: "link",
+        value: "Ürün A",
+      });
+      assert.equal(
+        observed.elements.some(
+          (e) => e.locator.kind === "id" && e.locator.value === "email",
+        ),
+        true,
+      );
+      assert.deepEqual(byText("Parola")?.locator, {
+        kind: "label",
+        value: "Parola",
+      });
+      assert.deepEqual(byText("Ürün ara")?.locator, {
+        kind: "placeholder",
+        value: "Ürün ara",
+      });
+      const positional = observed.elements.filter((e) => e.text === "Seç");
+      assert.equal(positional.length, 2);
+      for (const element of positional) {
+        assert.equal(element.fragile, true);
+        assert.match(element.locator.value, /li:nth-of-type\([12]\) > span$/);
+      }
+      assert.equal(
+        observed.elements
+          .filter((e) => !positional.includes(e))
+          .every((e) => !e.fragile),
+        true,
+      );
+      assert.equal(
+        observed.elements
+          .find((e) => e.text.startsWith("Sauce Labs Backpack"))
+          ?.text.includes("  "),
+        false,
+      );
+      for (const element of observed.elements)
+        if (element.locator.kind === "css")
+          assert.equal(await page.locator(element.locator.value).count(), 1);
+      assert.equal(
+        isFragileLocator({ kind: "css", value: "#a > div:nth-of-type(2)" }),
+        true,
+      );
+      assert.equal(isFragileLocator({ kind: "css", value: "#a > div" }), false);
+      assert.equal(
+        locatorKey({ value: "Giriş", role: "button", kind: "role" }),
+        locatorKey({ kind: "role", role: "button", value: "Giriş" }),
+      );
+    } finally {
+      await browser.close();
     }
   },
 );

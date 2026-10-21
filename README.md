@@ -95,6 +95,16 @@ otomatik kaydedilir. Kayıtlar proje/sayfa/locator bazında güncellenir;
 senaryo JSON'u reddedilse bile başarılı sayfa incelemesi korunur. Bu liste
 Demo Bank'ın onaylı model revision'larından ayrıdır.
 
+Liste sayfa URL'ine göre katlanabilir gruplar halinde gelir (ilk grup açık,
+her başlıkta element ve kırılgan sayısı); ad/locator araması ve sayfa filtresi
+API'de (`GET /v1/projects/:id/ai/elements?q=&pageUrl=&limit=&offset=`, en
+fazla 500 satır) çalışır, her grup 20'şer satır yükler ("Daha fazla göster").
+Uzun birleşik element adları kısaltılır, tam metin üzerine gelince görünür.
+Keşif sırasında locator önceliği: sayfada tekil `data-testid` / `data-test` >
+`id` > role + erişilebilir ad > label > placeholder > en yakın id'ye bağlı CSS.
+`nth-of-type` içeren CSS yolları **kırılgan** rozetiyle gösterilir ve suite
+üretim prompt'unda modelden kararlı bir alternatif varken kullanmaması istenir.
+
 ## Mimari
 
 ## AI Test Assistant

@@ -20,6 +20,15 @@ import {
 
 const idParam = z.object({ id: z.uuid() });
 const targetOriginInput = z.object({ url: z.url().max(1000) }).strict();
+const elementQuery = z.object({
+  q: z.string().trim().max(200).optional(),
+  pageUrl: z.string().max(1000).optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(500),
+  offset: z.coerce.number().int().min(0).max(100000).default(0),
+});
+// Positional CSS paths break when the page layout shifts.
+const fragileSql =
+  "(CASE WHEN locator_kind='css' AND (locator_value LIKE '%:nth-of-type(%' OR locator_value LIKE '%:nth-child(%') THEN 1 ELSE 0 END)";
 function targetOrigin(raw: string) {
   const url = new URL(raw);
   if (
@@ -151,13 +160,47 @@ export function registerAssistant(
   });
   app.get("/v1/projects/:projectId/ai/elements", async (request) => {
     const { user, projectId } = scoped(request);
-    return {
-      elements: store.db
+    const query = elementQuery.parse(request.query ?? {});
+    // Search and page filters run in SQLite; rows are always capped.
+    const where = ["org_id=?", "project_id=?"];
+    const args: string[] = [user.orgId, projectId];
+    if (query.q) {
+      const like = `%${query.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      where.push(
+        "(label LIKE ? ESCAPE '\\' OR locator_value LIKE ? ESCAPE '\\')",
+      );
+      args.push(like, like);
+    }
+    const pages = (
+      store.db
         .prepare(
-          "SELECT id,page_url AS pageUrl,tag,label,role,input_type AS inputType,locator_kind AS locatorKind,locator_value AS locatorValue,first_seen_at AS firstSeenAt,last_seen_at AS lastSeenAt FROM ai_page_elements WHERE org_id=? AND project_id=? ORDER BY last_seen_at DESC,id LIMIT 500",
+          `SELECT page_url AS pageUrl,COUNT(*) AS count,SUM(${fragileSql}) AS fragile,MAX(last_seen_at) AS lastSeenAt FROM ai_page_elements WHERE ${where.join(" AND ")} GROUP BY page_url ORDER BY lastSeenAt DESC,page_url`,
         )
-        .all(user.orgId, projectId),
-    };
+        .all(...args) as {
+        pageUrl: string;
+        count: number;
+        fragile: number;
+        lastSeenAt: string;
+      }[]
+    ).map((page) => ({ ...page, fragile: Number(page.fragile ?? 0) }));
+    if (query.pageUrl) {
+      where.push("page_url=?");
+      args.push(query.pageUrl);
+    }
+    const filter = where.join(" AND ");
+    const total = (
+      store.db
+        .prepare(`SELECT COUNT(*) AS n FROM ai_page_elements WHERE ${filter}`)
+        .get(...args) as { n: number }
+    ).n;
+    const elements = (
+      store.db
+        .prepare(
+          `SELECT id,page_url AS pageUrl,tag,label,role,input_type AS inputType,locator_kind AS locatorKind,locator_value AS locatorValue,${fragileSql} AS fragile,first_seen_at AS firstSeenAt,last_seen_at AS lastSeenAt FROM ai_page_elements WHERE ${filter} ORDER BY ${fragileSql},last_seen_at DESC,id LIMIT ? OFFSET ?`,
+        )
+        .all(...args, query.limit, query.offset) as Record<string, unknown>[]
+    ).map((element) => ({ ...element, fragile: element.fragile === 1 }));
+    return { elements, total, pages };
   });
   app.post("/v1/ai/authorized-origins", async (request, reply) => {
     const user = actor(request, true);

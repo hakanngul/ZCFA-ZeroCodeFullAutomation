@@ -1,5 +1,23 @@
 # Devam noktası — 19 Ekim 2026
 
+## 21 Ekim 2026 — AI element listesi gruplama ve kararlı locator
+
+Elementler → "Web sitelerinden kaydedilen elementler" artık tek uzun tablo
+değil: sayfa URL'ine göre katlanabilir gruplar (ilk grup açık, sayı ve
+kırılgan sayısı başlıkta), ad/locator araması ve sayfa filtresi var. Filtreler
+API'de (`q`, `pageUrl`, `limit` ≤ 500, `offset`) çalışıyor; her grup 20'şer
+satır yüklüyor ("Daha fazla göster"). Uzun birleşik adlar kısaltılıyor (tam
+metin `title`). Keşif locator önceliği: tekil `data-testid`/`data-test` → `id` →
+role + ad → label → placeholder → id'ye bağlı CSS (nth-of-type yalnız gerekli
+yerde). `nth-of-type` içeren CSS `fragile` sayılıyor; bayrak locator'dan
+türetildiği için migration gerekmedi (API SQL'de hesaplıyor). Suite prompt'u
+modelden kararlı alternatif varken kırılgan locator kullanmamasını istiyor;
+locator karşılaştırması anahtar sırasından bağımsız (`locatorKey`). Kanıt:
+`docs/evidence/assistant/ai-elements-grouped.png`, `ai-elements-fragile.png`
+(gerçek `.local/my-data` SauceDemo verisi: 3 sayfa, 120 element, 25 kırılgan —
+eski keşiften; yeni keşifler daha az kırılgan locator üretmeli). Sınır: yeni
+locator mantığı SauceDemo'da gerçek provider ile yeniden koşulmadı.
+
 ## 21 Ekim 2026 — Evren + SauceDemo gerçek uçtan uca doğrulama
 
 Gerçek Evren provider (`deepseek-v4.1-flash`) ve `https://www.saucedemo.com`
