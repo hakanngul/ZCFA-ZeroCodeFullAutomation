@@ -223,7 +223,15 @@ export function maskInspection<
       : inspection.stopped,
   };
 }
-export const explorationLimits = { pages: 5, steps: 12, ms: 120000 };
+// Fits a full checkout (login → inventory → cart → two checkout steps → done).
+export const explorationLimits = { pages: 8, steps: 20, ms: 120000 };
+/**
+ * Worker lease for an exploration: the deadline is only checked between
+ * steps, so the last provider call and page settle may run past it.
+ */
+export function explorationLeaseMs(providerTimeoutMs: number) {
+  return Math.max(180000, explorationLimits.ms + providerTimeoutMs + 30000);
+}
 export function normalizeInspection(raw: unknown) {
   const value = (raw ?? {}) as Partial<Inspection> & Partial<ObservedPage>;
   const rawPages: ObservedPage[] = Array.isArray(value.pages)

@@ -142,8 +142,10 @@ agent döngüsü yoktur.
 AI planlayıcı hedef sayfadan başlayıp sınırlı bir keşif döngüsü yürütür: model
 her turda gözlenen öğelerden tek bir `fill`/`click` adımı ya da `{"done":true}`
 döndürür, worker adımı aynı Chromium context'inde uygular ve yeni sayfayı
-gözler. Sınırlar: en fazla 5 sayfa, 12 keşif adımı, 120 saniye, yalnız aynı
-origin. Keşif her zaman yapılandırılmış bir durma nedeni kaydeder
+gözler. Sınırlar: en fazla 8 sayfa, 20 keşif adımı, 120 saniye, yalnız aynı
+origin (uçtan uca checkout gibi 6 sayfalık akışlar sığar). Worker keşif işinin
+lease'ini `max(180 sn, 120 sn + provider timeout + 30 sn)` yapar; son adımın
+provider çağrısı süre sınırını aşsa da iş düşmez. Keşif her zaman yapılandırılmış bir durma nedeni kaydeder
 (`inspection.stopped = {reason, message, step?}`): `done`, `limit_pages`,
 `limit_steps`, `timeout`, `step_failed`, `invalid_step`, `unobserved_locator`,
 `value_not_in_prompt` (ör. uydurulmuş kimlik bilgisi; adım uygulanmaz). Erken

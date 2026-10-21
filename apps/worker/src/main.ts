@@ -16,6 +16,7 @@ import {
   authorizedTarget,
   checkTargetNetwork,
   exploreTarget,
+  explorationLeaseMs,
   generateSuite,
   newGenerationMetrics,
   normalizeInspection,
@@ -109,6 +110,7 @@ while (!stopping) {
         store.authorizedOrigins(job.org_id),
       );
       await checkTargetNetwork(target);
+      store.extendLease(job, explorationLeaseMs(provider.timeout_ms));
       const prompt = JSON.parse(job.payload).prompt as string;
       const inspection = await exploreTarget(
         browser!,

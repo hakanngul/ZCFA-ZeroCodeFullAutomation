@@ -46,7 +46,7 @@ Paketler (`packages/*`, workspace içi göreli import ile kullanılır):
 - Hedef yetkilendirme: varsayılan yalnız `http://127.0.0.1:4100`; harici HTTPS origin'ler DB'deki listeden her işlemde okunur (yeniden başlatma gerekmez). Worker içerik/kaynak isteklerini aynı origin'e kısıtlar, diğer istek ve WebSocket'leri engeller.
 - Provider API anahtarı SQLite'ta AES-256-GCM ile şifreli; tarayıcıya geri dönmez. `.sqlite` ve `assistant.key` birlikte korunmalı.
 - Oturum yerel demo oturumudur (gerçek auth değil); loopback dışına açma.
-- AI planlayıcı `exploreTarget` ile sınırlı çok sayfalı keşif yapar (≤5 sayfa, ≤12 adım, ≤120 s, aynı origin; `fill` değeri prompt'ta birebir geçmeli). `ai_drafts.inspection` şekli `{pages, path, stopped?}`; eski tek sayfa şekli `normalizeInspection` ile `pages[0]`'a sarılır.
+- AI planlayıcı `exploreTarget` ile sınırlı çok sayfalı keşif yapar (≤8 sayfa, ≤20 adım, ≤120 s, aynı origin; `fill` değeri prompt'ta birebir geçmeli). `ai_drafts.inspection` şekli `{pages, path, stopped?}`; eski tek sayfa şekli `normalizeInspection` ile `pages[0]`'a sarılır.
 
 Testler: `tests/support.ts` ortak fixture/model yardımcıları; `tests/fixtures/server.ts` demo hedef (Demo Bank) sunucusu. `assistant-ui` ve `e2e` testleri gerçek tarayıcı kullanır.
 

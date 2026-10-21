@@ -15,6 +15,8 @@ import {
   newGenerationMetrics,
   scenarioTimeoutMs,
   suiteLeaseMs,
+  explorationLeaseMs,
+  explorationLimits,
   locatorKey,
   observePage,
 } from "../packages/assistant/src/agent";
@@ -961,7 +963,10 @@ test(
         "Giriş sayfasındaki alanları keşfet",
       );
       assert.equal(looped.draft.status, "ready");
-      assert.equal(looped.draft.inspection.path.length, 12);
+      assert.equal(
+        looped.draft.inspection.path.length,
+        explorationLimits.steps,
+      );
       assert.equal(looped.draft.inspection.stopped.reason, "limit_steps");
       assert.equal(
         looped.draft.inspection.stopped.message,
@@ -2114,6 +2119,11 @@ test("suite limits allow 10 scenarios, cap total actions and fit the lease", () 
     true,
   );
   assert.equal(suiteLeaseMs(1), 180000);
+  // A checkout flow needs six pages and about a dozen steps.
+  assert.equal(explorationLimits.pages >= 6, true);
+  assert.equal(explorationLimits.steps >= 12, true);
+  assert.equal(explorationLeaseMs(90000) >= explorationLimits.ms + 90000, true);
+  assert.equal(explorationLeaseMs(1000), 180000);
   assert.equal(
     suiteLeaseMs(suiteLimits.scenarios) >=
       suiteLimits.scenarios * scenarioTimeoutMs,

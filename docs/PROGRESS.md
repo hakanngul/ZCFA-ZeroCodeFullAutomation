@@ -1,5 +1,24 @@
 # Devam noktası — 19 Ekim 2026
 
+## 21 Ekim 2026 — Uçtan uca satın alma testi için keşif sınırları
+
+Sorun: Evren `deepseek-v4.1-flash` SauceDemo satın alma isteğinde (giriş →
+Backpack sepete → sepet → checkout bilgileri Test/Kullanici/34000 → özet →
+siparişi tamamla → "Thank you for your order!") keşif 5 sayfada
+`limit_pages` ile durdu; checkout-complete kaydedilmediği için teşekkür
+mesajı doğrulanamadı (yalnız URL). `explorationLimits` 8 sayfa / 20 adım /
+120 sn oldu. Yeni `explorationLeaseMs(providerTimeout)` =
+`max(180 sn, limits.ms + timeout + 30 sn)`; worker `ai_analysis` öncesi
+`Store.extendLease` ile uygular (son adım süre sınırını aşabilir). Testler:
+sınırlar ≥ 6 sayfa/12 adım ve lease hesabı; döngü testi `explorationLimits.steps`
+kullanıyor. Doğrulama: typecheck, format:check, `pnpm test` 35/35, build,
+`test:e2e` 13/13. Gerçek kontrol (`.local/my-data`, Evren, SauceDemo,
+`{{SAUCE_USER}}`/`{{SAUCE_PASS}}`): keşif 6 sayfa · 11 adım, model `done`
+dedi; 3 senaryo (uçtan uca sipariş 15 adım `complete-header` = "Thank you for
+your order!", posta kodu olmadan devam 11 adım, sepete ekle/kaldır 7 adım);
+onay + çalıştırma 3/3 başarılı. Kanıt:
+`docs/evidence/assistant/checkout-run.png`.
+
 ## 21 Ekim 2026 — Daha büyük suite'ler ve boş yanıt tekrarı
 
 Sorun: Evren `deepseek-v4.1-flash` "tüm login senaryoları" (7 senaryo) isteğinde
