@@ -62,26 +62,33 @@ uygulamayı açtığı anlamına gelmez: deneme canlı yerel demo hedefinde yap�
 
 ## AI Assistant ve suite
 
-| Metot      | Yol                                                                | Sonuç                                              |
-| ---------- | ------------------------------------------------------------------ | -------------------------------------------------- |
-| GET/POST   | /v1/ai/providers                                                   | Anahtarsız liste / şifreli provider kaydı          |
-| PUT/DELETE | /v1/ai/providers/:id                                               | Provider düzenle / sil                             |
-| POST       | /v1/ai/providers/:id/activate                                      | Aktif provider seç                                 |
-| POST       | /v1/ai/providers/connection                                        | Gerçek chat completion bağlantı testi              |
-| POST       | /v1/ai/providers/models                                            | Gerçek model listesi                               |
-| GET/POST   | /v1/ai/authorized-origins                                          | Yetkili HTTPS hedefleri listele / ekle             |
-| GET        | /v1/projects/:projectId/ai/elements                                | AI ile gözlenen sayfa elementleri                  |
-| DELETE     | /v1/ai/authorized-origins/:id                                      | Yetkili hedefi kaldır                              |
-| GET        | /v1/projects/:projectId/ai/conversations                           | Konuşma geçmişi                                    |
-| GET        | /v1/projects/:projectId/ai/conversations/:id                       | Mesaj, taslak ve çalışma geçmişi                   |
-| POST       | /v1/projects/:projectId/ai/messages                                | Prompt → kuyruklu browser incelemesi ve AI taslağı |
-| GET        | /v1/projects/:projectId/ai/suites                                  | Onaylanan suite listesi                            |
-| POST       | /v1/projects/:projectId/ai/drafts/:id/save                         | Düzenlenen suite'i insan onayıyla kaydet           |
-| POST       | /v1/projects/:projectId/ai/suites/:id/revise                       | Suite'i yeni taslak olarak aç                      |
-| POST       | /v1/projects/:projectId/ai/suites/:id/runs                         | Ayrı worker'da gerçek suite çalıştırma             |
-| GET        | /v1/projects/:projectId/ai/runs/:id                                | Durum ve senaryo sonuçları                         |
-| GET        | /v1/projects/:projectId/ai/runs/:id/screenshots/:index             | Auth/org/checksum kontrollü PNG                    |
-| GET        | /v1/projects/:projectId/ai/runs/:id/screenshots/:index/steps/:step | Adım bazında auth/org/checksum kontrollü PNG       |
+| Metot      | Yol                                                                | Sonuç                                                                |
+| ---------- | ------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| GET/POST   | /v1/ai/providers                                                   | Anahtarsız liste / şifreli provider kaydı                            |
+| PUT/DELETE | /v1/ai/providers/:id                                               | Provider düzenle / sil                                               |
+| POST       | /v1/ai/providers/:id/activate                                      | Aktif provider seç                                                   |
+| POST       | /v1/ai/providers/connection                                        | Gerçek chat completion bağlantı testi                                |
+| POST       | /v1/ai/providers/models                                            | Gerçek model listesi                                                 |
+| GET/POST   | /v1/ai/authorized-origins                                          | Yetkili HTTPS hedefleri listele / ekle                               |
+| GET        | /v1/projects/:projectId/ai/elements                                | AI ile gözlenen sayfa elementleri                                    |
+| DELETE     | /v1/ai/authorized-origins/:id                                      | Yetkili hedefi kaldır                                                |
+| GET        | /v1/projects/:projectId/ai/conversations                           | Konuşma geçmişi                                                      |
+| GET        | /v1/projects/:projectId/ai/conversations/:id                       | Mesaj, taslak ve çalışma geçmişi                                     |
+| POST       | /v1/projects/:projectId/ai/messages                                | Prompt → kuyruklu browser incelemesi ve AI taslağı                   |
+| GET        | /v1/projects/:projectId/ai/suites                                  | Onaylanan suite listesi                                              |
+| POST       | /v1/projects/:projectId/ai/drafts/:id/save                         | Düzenlenen suite'i insan onayıyla kaydet                             |
+| POST       | /v1/projects/:projectId/ai/suites/:id/revise                       | Suite'i yeni taslak olarak aç                                        |
+| POST       | /v1/projects/:projectId/ai/suites/:id/runs                         | Ayrı worker'da gerçek suite çalıştırma                               |
+| GET        | /v1/projects/:projectId/ai/runs/:id                                | Durum ve senaryo sonuçları                                           |
+| GET        | /v1/projects/:projectId/ai/runs/:id/screenshots/:index             | Auth/org/checksum kontrollü PNG                                      |
+| GET        | /v1/projects/:projectId/ai/runs/:id/screenshots/:index/steps/:step | Adım bazında auth/org/checksum kontrollü PNG                         |
+| POST       | /v1/projects/:projectId/ai/suites/:id/promote                      | Onaylı suite → değişmez, sürümlü kalıcı test (201 yeni / 200 mevcut) |
+| GET        | /v1/projects/:projectId/ai/tests                                   | Kalıcı AI test sürümleri (origin yetkisi dahil)                      |
+| GET        | /v1/projects/:projectId/ai/tests/:id/versions/:revision            | Sürüm tanımı + checksum                                              |
+| POST       | /v1/projects/:projectId/ai/tests/:id/runs                          | Sürümü plan snapshot + checksum ile kuyruğa al                       |
+| GET        | /v1/projects/:projectId/ai/test-runs                               | Kalıcı test çalıştırmaları                                           |
+| GET        | /v1/projects/:projectId/ai/test-runs/:id                           | Plan, durum, senaryo sonuçları                                       |
+| GET        | /v1/projects/:projectId/ai/test-runs/:id/screenshots/:index        | Auth/org/checksum kontrollü PNG                                      |
 
 `aiSuiteSchema` yalnız `fill`, `click`, `assertVisible`, `assertText` ve
 `assertUrl` adımlarını kabul eder. Her senaryoda açık assertion zorunludur.

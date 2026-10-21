@@ -179,6 +179,16 @@ izole browser container ve harici staging doğrulaması yoktur; bu prototipi
 güvenilmeyen hedeflere veya üretim hesaplarına açmayın. AI suite'leri mevcut
 canonical Demo Bank testlerinden ayrı veri modelinde tutulur.
 
+**Kalıcı teste dönüştür** (Testler → AI suite'ler): onaylı suite, değişmez ve
+sürümlü bir AI testine (`ai_tests`, migration 006) dönüşür; kullanılan
+elementler gözlemden anlık görüntü olarak saklanır ve tanımın SHA-256'sı
+tutulur. Aynı konuşmada revize edilip onaylanan suite aynı testin yeni sürümü
+olur; eski sürüm değişmez. Kalıcı testler AI suite executor'ı ile ayrı
+`ai_test_run` işinde çalışır, plan snapshot + checksum run'a yazılır; hedef
+origin yetkisi her çalıştırmada (API ve worker) yeniden kontrol edilir.
+Sonuçlar ve kanıt görüntüleri Çalıştırmalar'da görünür. Ayrıntı:
+`docs/decisions/012-promoted-ai-tests.md`.
+
 ## Mimari
 
 - `apps/web`: Next.js Türkçe çalışma alanı; business / flow / technical projeksiyonları.

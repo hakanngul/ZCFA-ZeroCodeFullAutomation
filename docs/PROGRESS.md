@@ -1,5 +1,27 @@
 # Devam noktası — 19 Ekim 2026
 
+## 21 Ekim 2026 — Onaylı AI suite'ini kalıcı teste dönüştürme
+
+Testler → AI suite'ler listesinde **Kalıcı teste dönüştür** eklendi
+(`POST /v1/projects/:projectId/ai/suites/:id/promote`). Karar ADR 012'de:
+suite başına tek test; yeni `ai_tests`/`ai_test_runs` tabloları (migration
+006, idempotent; UPDATE/DELETE trigger'la engelli). Sürüm tanımı senaryoları ve
+kullanılan elementlerin gözlem anlık görüntüsünü (sayfa URL'i, etiket, rol,
+locator) ve SHA-256'yı saklar; aynı suite tekrar dönüştürülünce aynı sürüm
+döner, aynı konuşmada revize edilip onaylanan suite yeni sürüm (v2) olur.
+Çalıştırma AI suite executor'ı ile ayrı `ai_test_run` işinde: plan snapshot +
+checksum run'a yazılır ve worker'da yeniden doğrulanır; origin yetkisi API'de
+ve worker'da yeniden okunur (kaldırılmışsa 403 / `blocked`). PASS her senaryoda
+assertion + tüm adımlar + ekran görüntüsü ister, yoksa
+`INVALID_PASS_EVIDENCE`. Çalıştırmalar'da "Kalıcı AI testi çalıştırmaları"
+kartı plan checksum'ı, senaryo sonuçlarını ve kanıt görüntülerini gösteriyor.
+Ayrıca worker artık `ai_generate` işi için tarayıcı açmıyor. Gerçek doğrulama
+(`.local/my-data`, SauceDemo suite'i): v1 oluşturuldu (3 senaryo, 11 element),
+headless çalıştırma 3 başarılı · 0 başarısız. Kanıt:
+`docs/evidence/assistant/promoted-test.png`, `promoted-run.png`. Sınır: soy
+takibi konuşma + origin sezgisi; kalıcı AI test run'ı için iptal/idempotency
+anahtarı yok; nav'daki Çalıştırmalar sayacı yalnız klasik run'ları sayıyor.
+
 ## 21 Ekim 2026 — Keşif şeffaflığı ve iki aşamalı AI işi
 
 `exploreTarget` artık sessizce durmuyor: `inspection.stopped = {reason,

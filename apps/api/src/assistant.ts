@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { randomUUID, createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -18,6 +18,7 @@ import {
   providerRequest,
   type Provider,
 } from "../../../packages/assistant/src/provider";
+import { registerPromotedTests } from "./promoted-tests";
 
 const idParam = z.object({ id: z.uuid() });
 const targetOriginInput = z.object({ url: z.url().max(1000) }).strict();
@@ -541,12 +542,15 @@ export function registerAssistant(
     return {
       suites: store.db
         .prepare(
-          "SELECT id,definition,created_at FROM ai_suites WHERE org_id=? AND project_id=? ORDER BY created_at DESC",
+          "SELECT s.id,s.definition,s.created_at,t.id AS test_id,t.revision AS test_revision FROM ai_suites s LEFT JOIN ai_tests t ON t.suite_id=s.id AND t.org_id=s.org_id WHERE s.org_id=? AND s.project_id=? ORDER BY s.created_at DESC",
         )
         .all(user.orgId, projectId)
-        .map((row) => ({
+        .map(({ test_id, test_revision, ...row }) => ({
           ...row,
           definition: JSON.parse(row.definition as string),
+          promoted: test_id
+            ? { testId: test_id, revision: test_revision }
+            : null,
         })),
     };
   });
@@ -746,84 +750,72 @@ export function registerAssistant(
       result: row.result ? JSON.parse(row.result as string) : null,
     };
   });
-  app.get(
-    "/v1/projects/:projectId/ai/runs/:id/screenshots/:index",
-    async (request, reply) => {
-      const { user, projectId } = scoped(request),
-        { id, index } = z
-          .object({
-            id: z.uuid(),
-            index: z.coerce.number().int().min(0).max(7),
-          })
-          .parse(request.params);
-      const row = store.db
-        .prepare(
-          "SELECT result FROM ai_suite_runs WHERE id=? AND org_id=? AND project_id=?",
-        )
-        .get(id, user.orgId, projectId);
-      if (!row?.result)
-        throw new DomainError("NOT_FOUND", "Kanıt bulunamadı.", 404);
-      const expected = JSON.parse(row.result as string).results[index]
-        ?.screenshot;
-      if (!expected)
-        throw new DomainError("NOT_FOUND", "Kanıt bulunamadı.", 404);
-      const data = await readFile(
-        resolve(
-          store.dataDir,
-          "artifacts",
-          id,
-          String(index),
-          `scenario-${index}.png`,
-        ),
+  async function sendEvidence(
+    reply: FastifyReply,
+    table: "ai_suite_runs" | "ai_test_runs",
+    user: Actor,
+    projectId: string,
+    id: string,
+    index: number,
+    step?: number,
+  ) {
+    const row = store.db
+      .prepare(
+        `SELECT result FROM ${table} WHERE id=? AND org_id=? AND project_id=?`,
+      )
+      .get(id, user.orgId, projectId);
+    if (!row?.result)
+      throw new DomainError("NOT_FOUND", "Kanıt bulunamadı.", 404);
+    const scenario = JSON.parse(row.result as string).results?.[index];
+    const expected =
+      step === undefined
+        ? scenario?.screenshot
+        : scenario?.steps[step]?.screenshot;
+    if (!expected) throw new DomainError("NOT_FOUND", "Kanıt bulunamadı.", 404);
+    const data = await readFile(
+      resolve(
+        store.dataDir,
+        "artifacts",
+        id,
+        String(index),
+        step === undefined ? `scenario-${index}.png` : `step-${step}.png`,
+      ),
+    );
+    if (createHash("sha256").update(data).digest("hex") !== expected.sha256)
+      throw new DomainError(
+        "EVIDENCE_CORRUPTED",
+        "Kanıt bütünlüğü bozuldu.",
+        409,
       );
-      if (createHash("sha256").update(data).digest("hex") !== expected.sha256)
-        throw new DomainError(
-          "EVIDENCE_CORRUPTED",
-          "Kanıt bütünlüğü bozuldu.",
-          409,
-        );
-      return reply.type("image/png").send(data);
-    },
-  );
-  app.get(
-    "/v1/projects/:projectId/ai/runs/:id/screenshots/:index/steps/:step",
-    async (request, reply) => {
-      const { user, projectId } = scoped(request),
-        { id, index, step } = z
-          .object({
-            id: z.uuid(),
-            index: z.coerce.number().int().min(0).max(7),
-            step: z.coerce.number().int().min(0).max(19),
-          })
-          .parse(request.params);
-      const row = store.db
-        .prepare(
-          "SELECT result FROM ai_suite_runs WHERE id=? AND org_id=? AND project_id=?",
-        )
-        .get(id, user.orgId, projectId);
-      if (!row?.result)
-        throw new DomainError("NOT_FOUND", "Kanıt bulunamadı.", 404);
-      const expected = JSON.parse(row.result as string).results[index]?.steps[
-        step
-      ]?.screenshot;
-      if (!expected)
-        throw new DomainError("NOT_FOUND", "Kanıt bulunamadı.", 404);
-      const data = await readFile(
-        resolve(
-          store.dataDir,
-          "artifacts",
-          id,
-          String(index),
-          `step-${step}.png`,
-        ),
-      );
-      if (createHash("sha256").update(data).digest("hex") !== expected.sha256)
-        throw new DomainError(
-          "EVIDENCE_CORRUPTED",
-          "Kanıt bütünlüğü bozuldu.",
-          409,
-        );
-      return reply.type("image/png").send(data);
-    },
-  );
+    return reply.type("image/png").send(data);
+  }
+  const evidenceParams = z.object({
+    id: z.uuid(),
+    index: z.coerce.number().int().min(0).max(7),
+    step: z.coerce.number().int().min(0).max(19).optional(),
+  });
+  for (const [prefix, table] of [
+    ["runs", "ai_suite_runs"],
+    ["test-runs", "ai_test_runs"],
+  ] as const) {
+    app.get(
+      `/v1/projects/:projectId/ai/${prefix}/:id/screenshots/:index`,
+      async (request, reply) => {
+        const { user, projectId } = scoped(request),
+          { id, index } = evidenceParams.parse(request.params);
+        return sendEvidence(reply, table, user, projectId, id, index);
+      },
+    );
+    app.get(
+      `/v1/projects/:projectId/ai/${prefix}/:id/screenshots/:index/steps/:step`,
+      async (request, reply) => {
+        const { user, projectId } = scoped(request),
+          { id, index, step } = evidenceParams
+            .required({ step: true })
+            .parse(request.params);
+        return sendEvidence(reply, table, user, projectId, id, index, step);
+      },
+    );
+  }
+  registerPromotedTests(app, store, scoped);
 }

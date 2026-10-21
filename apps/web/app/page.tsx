@@ -50,6 +50,7 @@ import { ElementRegistry } from "./components/element-registry";
 import { AiElementList } from "./components/ai-element-list";
 import { AiAssistant } from "./components/ai-assistant";
 import { AiSuiteList } from "./components/ai-suite-list";
+import { PromotedRuns, PromotedTests } from "./components/promoted-tests";
 
 type Scan = {
   id: string;
@@ -147,6 +148,8 @@ export default function Workspace() {
   const [published, setPublished] = useState<CanonicalTest | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [run, setRun] = useState<RunDetail | null>(null);
+  const [promotedKey, setPromotedKey] = useState(0);
+  const [aiTestRunId, setAiTestRunId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const refresh = useCallback(async () => {
     if (projectId) setData(await api<ProjectData>(`/v1/projects/${projectId}`));
@@ -1064,6 +1067,16 @@ export default function Workspace() {
                 projectId={projectId}
                 canEdit={actor.role !== "viewer"}
                 onOpen={() => setSection("assistant")}
+                onPromoted={() => setPromotedKey((k) => k + 1)}
+              />
+              <PromotedTests
+                projectId={projectId}
+                canEdit={actor.role !== "viewer"}
+                reloadKey={promotedKey}
+                onRun={(id) => {
+                  setAiTestRunId(id);
+                  setSection("runs");
+                }}
               />
               <div className="designer-grid">
                 <section className="card editor-card">{editor}</section>
@@ -1148,6 +1161,11 @@ export default function Workspace() {
           )}
           {section === "runs" && (
             <>
+              <PromotedRuns
+                projectId={projectId}
+                selected={aiTestRunId}
+                onSelect={setAiTestRunId}
+              />
               <section className="card">
                 <div className="card-heading">
                   <h2>Çalıştırma geçmişi</h2>

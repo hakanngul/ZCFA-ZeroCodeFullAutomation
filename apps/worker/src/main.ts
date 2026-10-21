@@ -23,6 +23,11 @@ import {
 import type { Provider } from "../../../packages/assistant/src/provider";
 import { providerRequest } from "../../../packages/assistant/src/provider";
 import { aiSuiteSchema } from "../../../packages/assistant/src/spec";
+import {
+  evidencedPass,
+  verifyPlan,
+  type PromotedPlan,
+} from "../../../packages/assistant/src/promote";
 import { randomUUID } from "node:crypto";
 
 const store = new Store();
@@ -45,9 +50,10 @@ while (!stopping) {
   let browser: Awaited<ReturnType<typeof launchBrowser>> | undefined;
   let cancelPoll: ReturnType<typeof setInterval> | undefined;
   try {
-    browser = await launchBrowser();
+    // Suite generation only talks to the provider; it needs no browser.
+    if (job.kind !== "ai_generate") browser = await launchBrowser();
     if (job.kind === "discovery") {
-      const findings = await discover(browser);
+      const findings = await discover(browser!);
       store.transaction(() => {
         const valid = store.db
           .prepare(
@@ -73,7 +79,7 @@ while (!stopping) {
       if (!row)
         throw new DomainError("NOT_FOUND", "Locator denemesi bulunamadı.");
       const result = await checkLocator(
-        browser,
+        browser!,
         row.page as "login" | "dashboard",
         locatorSchema.parse(JSON.parse(row.locator as string)),
       );
@@ -97,7 +103,7 @@ while (!stopping) {
       await checkTargetNetwork(target);
       const prompt = JSON.parse(job.payload).prompt as string;
       const inspection = await exploreTarget(
-        browser,
+        browser!,
         target,
         provider,
         draft.model as string,
@@ -231,7 +237,7 @@ while (!stopping) {
       if (!row)
         throw new DomainError("NOT_FOUND", "Suite çalışması bulunamadı.");
       const result = await executeSuite(
-        browser,
+        browser!,
         aiSuiteSchema.parse(JSON.parse(row.definition as string)),
         resolve(localDir, "artifacts", job.id),
         store.authorizedOrigins(job.org_id),
@@ -328,6 +334,65 @@ while (!stopping) {
           .prepare("UPDATE jobs SET status='done' WHERE id=? AND lease_token=?")
           .run(job.id, job.lease_token);
       });
+    } else if (job.kind === "ai_test_run") {
+      const row = store.db
+        .prepare(
+          "SELECT plan,checksum FROM ai_test_runs WHERE id=? AND org_id=? AND project_id=?",
+        )
+        .get(job.id, job.org_id, job.project_id);
+      if (!row)
+        throw new DomainError("NOT_FOUND", "Test çalışması bulunamadı.");
+      const plan = JSON.parse(row.plan as string) as PromotedPlan;
+      let status: string, result: unknown;
+      try {
+        if (plan.checksum !== row.checksum)
+          throw new DomainError(
+            "PLAN_CHECKSUM_MISMATCH",
+            "Çalıştırma planı bütünlüğü doğrulanamadı.",
+          );
+        // executeSuite re-reads target authorization at run time.
+        const outcome = await executeSuite(
+          browser!,
+          verifyPlan(plan),
+          resolve(localDir, "artifacts", job.id),
+          store.authorizedOrigins(job.org_id),
+        );
+        status =
+          outcome.status === "passed" && !evidencedPass(plan, outcome)
+            ? "infrastructure_error"
+            : outcome.status;
+        result =
+          status === "infrastructure_error"
+            ? { ...outcome, code: "INVALID_PASS_EVIDENCE" }
+            : outcome;
+      } catch (error) {
+        if (!(error instanceof DomainError)) throw error;
+        status =
+          error.code === "TARGET_BLOCKED" ? "blocked" : "infrastructure_error";
+        result = { code: error.code, message: error.message, results: [] };
+      }
+      store.transaction(() => {
+        const valid = store.db
+          .prepare(
+            "SELECT id FROM jobs WHERE id=? AND status='running' AND lease_token=? AND lease_until>=?",
+          )
+          .get(job.id, job.lease_token, Date.now());
+        if (!valid) return;
+        store.db
+          .prepare(
+            "UPDATE ai_test_runs SET status=?,result=?,finished_at=? WHERE id=? AND org_id=? AND status='running'",
+          )
+          .run(
+            status,
+            JSON.stringify(result),
+            new Date().toISOString(),
+            job.id,
+            job.org_id,
+          );
+        store.db
+          .prepare("UPDATE jobs SET status='done' WHERE id=? AND lease_token=?")
+          .run(job.id, job.lease_token);
+      });
     } else {
       const run = store.db
         .prepare(
@@ -343,7 +408,7 @@ while (!stopping) {
         if (row?.status !== "running") current?.abort();
       }, 100);
       const outcome = await execute(
-        browser,
+        browser!,
         JSON.parse(run.plan as string),
         run.variant as "healthy",
         resolve(localDir, "artifacts", job.id),
@@ -403,6 +468,22 @@ while (!stopping) {
           )
           .run(
             JSON.stringify({ code: "WORKER_ERROR" }),
+            new Date().toISOString(),
+            job.id,
+            job.org_id,
+          );
+        store.db
+          .prepare("UPDATE jobs SET status='done' WHERE id=? AND lease_token=?")
+          .run(job.id, job.lease_token);
+      });
+    else if (job.kind === "ai_test_run")
+      store.transaction(() => {
+        store.db
+          .prepare(
+            "UPDATE ai_test_runs SET status='infrastructure_error',result=?,finished_at=? WHERE id=? AND org_id=? AND status='running'",
+          )
+          .run(
+            JSON.stringify({ code: "WORKER_ERROR", results: [] }),
             new Date().toISOString(),
             job.id,
             job.org_id,

@@ -17,6 +17,11 @@ import { launchBrowser } from "../packages/runner/src/index";
 import { createApp } from "../apps/api/src/app";
 import { demoProject } from "../packages/domain/src/index";
 import { admin } from "./support";
+import {
+  compilePromoted,
+  evidencedPass,
+  verifyPlan,
+} from "../packages/assistant/src/promote";
 
 async function until<T>(
   probe: () => Promise<T | null | false | undefined>,
@@ -554,6 +559,226 @@ test(
         failed: 1,
         skipped: 0,
       });
+      // Promotion: approved suite → immutable, versioned test (ADR 012).
+      const promoteRoute = (suiteId: string) =>
+        `/v1/projects/${demoProject}/ai/suites/${suiteId}/promote`;
+      const promoted = await call("POST", promoteRoute(suite.body.id), {});
+      assert.equal(promoted.status, 201);
+      assert.equal(promoted.body.test.revision, 1);
+      assert.equal(promoted.body.test.targetOrigin, "http://127.0.0.1:4100");
+      assert.deepEqual(
+        promoted.body.test.elements.map(
+          (e: { locator: { value: string } }) => e.locator.value,
+        ),
+        ["login-email", "login-password", "login-submit", "error"],
+      );
+      assert.equal(
+        promoted.body.test.elements[0].pageUrl,
+        "http://127.0.0.1:4100/login",
+      );
+      const testId = promoted.body.test.testId as string;
+      const again = await call("POST", promoteRoute(suite.body.id), {});
+      assert.equal(again.status, 200);
+      assert.equal(again.body.test.revision, 1);
+      assert.equal(again.body.checksum, promoted.body.checksum);
+      // Later element registry changes do not touch the snapshot.
+      store.db
+        .prepare("UPDATE ai_page_elements SET label='Değişti' WHERE org_id=?")
+        .run(admin.orgId);
+      const v2 = await call("POST", promoteRoute(revised.body.id), {});
+      assert.equal(v2.status, 201);
+      assert.equal(v2.body.test.testId, testId);
+      assert.equal(v2.body.test.revision, 2);
+      assert.notEqual(v2.body.checksum, promoted.body.checksum);
+      const v1 = await call(
+        "GET",
+        `/v1/projects/${demoProject}/ai/tests/${testId}/versions/1`,
+      );
+      assert.deepEqual(v1.body.test, promoted.body.test);
+      assert.equal(v1.body.checksum, promoted.body.checksum);
+      assert.throws(
+        () =>
+          store.db
+            .prepare("UPDATE ai_tests SET title='x' WHERE id=?")
+            .run(testId),
+        /immutable ai test/,
+      );
+      assert.throws(
+        () => store.db.prepare("DELETE FROM ai_tests WHERE id=?").run(testId),
+        /immutable ai test/,
+      );
+      const suitesList = await call(
+        "GET",
+        `/v1/projects/${demoProject}/ai/suites`,
+      );
+      assert.deepEqual(
+        suitesList.body.suites.find(
+          (x: { id: string }) => x.id === suite.body.id,
+        ).promoted,
+        { testId, revision: 1 },
+      );
+      const listed = await call("GET", `/v1/projects/${demoProject}/ai/tests`);
+      assert.deepEqual(
+        listed.body.tests.map((t: { revision: number }) => t.revision).sort(),
+        [1, 2],
+      );
+      assert.equal(listed.body.tests[0].authorized, true);
+      const runTest = async (revision: number) => {
+        const queuedRun = await call(
+          "POST",
+          `/v1/projects/${demoProject}/ai/tests/${testId}/runs`,
+          { revision },
+        );
+        assert.equal(queuedRun.status, 202);
+        return until(async () => {
+          const response = await call(
+            "GET",
+            `/v1/projects/${demoProject}/ai/test-runs/${queuedRun.body.id}`,
+          );
+          return ["queued", "running"].includes(response.body.status)
+            ? null
+            : response.body;
+        });
+      };
+      const promotedPass = await runTest(1);
+      assert.equal(promotedPass.status, "passed");
+      assert.equal(promotedPass.revision, 1);
+      assert.equal(promotedPass.plan.checksum, promotedPass.checksum);
+      assert.equal(promotedPass.plan.testRevision, 1);
+      assert.match(
+        promotedPass.result.results[0].screenshot.sha256,
+        /^[a-f0-9]{64}$/,
+      );
+      const promotedShot = await app.inject({
+        method: "GET",
+        url: `/v1/projects/${demoProject}/ai/test-runs/${promotedPass.id}/screenshots/0`,
+        headers,
+      });
+      assert.equal(promotedShot.statusCode, 200);
+      assert.equal(promotedShot.headers["content-type"], "image/png");
+      assert.throws(
+        () =>
+          store.db
+            .prepare("UPDATE ai_test_runs SET plan='{}' WHERE id=?")
+            .run(promotedPass.id),
+        /immutable ai test run/,
+      );
+      assert.throws(
+        () =>
+          store.db
+            .prepare("UPDATE ai_test_runs SET status='failed' WHERE id=?")
+            .run(promotedPass.id),
+        /immutable ai test result/,
+      );
+      assert.equal((await runTest(2)).status, "failed");
+      const testRuns = await call(
+        "GET",
+        `/v1/projects/${demoProject}/ai/test-runs`,
+      );
+      assert.equal(testRuns.body.runs.length, 2);
+      assert.equal(
+        (
+          await call(
+            "GET",
+            `/v1/projects/11111111-1111-4111-8111-111111111111/ai/test-runs/${promotedPass.id}`,
+          )
+        ).status,
+        404,
+      );
+      // Authorization is re-checked at run time: a removed origin blocks the test.
+      const sauce = await call("POST", "/v1/ai/authorized-origins", {
+        url: "https://www.saucedemo.com/",
+      });
+      assert.equal(sauce.status, 201);
+      const sauceSuiteId = randomUUID();
+      store.db.prepare("INSERT INTO ai_suites VALUES (?,?,?,?,?,?)").run(
+        sauceSuiteId,
+        admin.orgId,
+        demoProject,
+        queued.body.draftId,
+        JSON.stringify({
+          title: "Harici hedef",
+          targetUrl: "https://www.saucedemo.com/",
+          scenarios: [
+            {
+              title: "Ana sayfa açılır",
+              category: "positive",
+              actions: [
+                { kind: "assertUrl", expected: "https://www.saucedemo.com/" },
+              ],
+            },
+          ],
+        }),
+        new Date().toISOString(),
+      );
+      const sauceTest = await call("POST", promoteRoute(sauceSuiteId), {});
+      assert.equal(sauceTest.status, 201);
+      assert.notEqual(sauceTest.body.test.testId, testId);
+      await call("DELETE", `/v1/ai/authorized-origins/${sauce.body.id}`);
+      const blockedRun = await call(
+        "POST",
+        `/v1/projects/${demoProject}/ai/tests/${sauceTest.body.test.testId}/runs`,
+        {},
+      );
+      assert.equal(blockedRun.status, 403);
+      assert.equal(blockedRun.body.code, "TARGET_BLOCKED");
+      assert.equal(
+        (await call("POST", promoteRoute(randomUUID()), {})).status,
+        404,
+      );
+      assert.equal(
+        (
+          await call("GET", `/v1/projects/${demoProject}/ai/tests`)
+        ).body.tests.find(
+          (t: { id: string }) => t.id === sauceTest.body.test.testId,
+        ).authorized,
+        false,
+      );
+      // A run already queued before the origin was removed is blocked by the worker.
+      const lateRunId = randomUUID(),
+        latePlan = compilePromoted(sauceTest.body.test);
+      store.transaction(() => {
+        const now = new Date().toISOString();
+        store.db
+          .prepare("INSERT INTO ai_test_runs VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+          .run(
+            lateRunId,
+            admin.orgId,
+            demoProject,
+            sauceTest.body.test.testId,
+            1,
+            JSON.stringify(latePlan),
+            latePlan.checksum,
+            "queued",
+            null,
+            now,
+            null,
+          );
+        store.db
+          .prepare(
+            "INSERT INTO jobs (id,org_id,project_id,kind,payload,status,created_at) VALUES (?,?,?,?,?,?,?)",
+          )
+          .run(
+            lateRunId,
+            admin.orgId,
+            demoProject,
+            "ai_test_run",
+            "{}",
+            "queued",
+            now,
+          );
+      });
+      const lateRun = await until(async () => {
+        const response = await call(
+          "GET",
+          `/v1/projects/${demoProject}/ai/test-runs/${lateRunId}`,
+        );
+        return ["queued", "running"].includes(response.body.status)
+          ? null
+          : response.body;
+      });
+      assert.equal(lateRun.status, "blocked");
+      assert.equal(lateRun.result.code, "TARGET_BLOCKED");
       const history = await call("GET", route);
       assert.equal(
         history.body.messages.some((m: { content: string }) =>
@@ -891,3 +1116,56 @@ test(
     }
   },
 );
+
+test("promoted AI test plans are checksummed and PASS needs full evidence", () => {
+  const plan = compilePromoted({
+    schemaVersion: "ai-test-1.0",
+    testId: randomUUID(),
+    revision: 1,
+    orgId: admin.orgId,
+    projectId: demoProject,
+    title: "Kanıt kontrolü",
+    targetUrl: "http://127.0.0.1:4100/login",
+    targetOrigin: "http://127.0.0.1:4100",
+    source: {
+      suiteId: randomUUID(),
+      draftId: randomUUID(),
+      conversationId: randomUUID(),
+    },
+    elements: [],
+    scenarios: [
+      {
+        title: "Giriş sayfası",
+        category: "positive",
+        actions: [
+          { kind: "assertUrl", expected: "http://127.0.0.1:4100/login" },
+        ],
+      },
+    ],
+  });
+  assert.equal(verifyPlan(plan).scenarios.length, 1);
+  assert.throws(
+    () => verifyPlan({ ...plan, targetUrl: "http://127.0.0.1:4100/dashboard" }),
+    { code: "PLAN_CHECKSUM_MISMATCH" },
+  );
+  const step = { kind: "assertUrl", status: "passed" };
+  const ok = {
+    status: "passed",
+    results: [{ status: "passed", steps: [step], screenshot: { sha256: "a" } }],
+  };
+  assert.equal(evidencedPass(plan, ok), true);
+  assert.equal(
+    evidencedPass(plan, {
+      ...ok,
+      results: [{ status: "passed", steps: [step] }],
+    }),
+    false,
+  );
+  assert.equal(
+    evidencedPass(plan, {
+      ...ok,
+      results: [{ status: "passed", steps: [], screenshot: { sha256: "a" } }],
+    }),
+    false,
+  );
+});
