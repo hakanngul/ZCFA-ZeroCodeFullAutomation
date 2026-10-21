@@ -24,7 +24,7 @@ import {
 } from "../../../packages/domain/src/index";
 
 const uiOrigins = new Set(
-  [3000, 5000].flatMap((port) => [
+  [3000, 5000, Number(process.env.ZC_WEB_PORT ?? 5000)].flatMap((port) => [
     `http://127.0.0.1:${port}`,
     `http://localhost:${port}`,
   ]),

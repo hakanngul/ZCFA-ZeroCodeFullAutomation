@@ -40,6 +40,8 @@ pnpm dev
 
 UI 5000, API 4000, demo hedef 4100 portunda **127.0.0.1'e bağlıdır**. Supervisor
 dört süreci birlikte açar; Ctrl+C yalnız başlattığı süreç gruplarını durdurur.
+UI portunu değiştirmek için `ZC_WEB_PORT=5173 pnpm dev` kullan; API bu origin'i
+de kabul eder.
 Bu ortamın onboarding arayüzünde localhost önizleme bağlantısı desteklenmez.
 Servisler yerel HTTP istekleri ve gerçek browser testleriyle doğrulanır.
 
