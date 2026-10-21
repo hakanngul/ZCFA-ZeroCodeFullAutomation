@@ -6,7 +6,8 @@ import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
-import { Store } from "../packages/storage/src/index";
+import { recordObservedElements, Store } from "../packages/storage/src/index";
+import { DatabaseSync } from "node:sqlite";
 import {
   authorizedTarget,
   executeSuite,
@@ -19,6 +20,7 @@ import {
   explorationLimits,
   locatorKey,
   observePage,
+  pageForModel,
 } from "../packages/assistant/src/agent";
 import { launchBrowser } from "../packages/runner/src/index";
 import { createApp } from "../apps/api/src/app";
@@ -1062,6 +1064,7 @@ test(
           <a data-test="cart" href="#cart">Sepet</a>
           <a data-test="item" href="#a">Ürün A</a><a data-test="item" href="#b">Ürün B</a>
           <input id="email" type="email">
+          <input data-test="username" id="user-name" placeholder="Username">
           <label>Parola <input type="password"></label>
           <input type="search" placeholder="Ürün ara">
           <h2>Ürünler</h2>
@@ -1100,6 +1103,19 @@ test(
         kind: "placeholder",
         value: "Ürün ara",
       });
+      // Up to three unique candidates: primary + alternatives (library).
+      assert.deepEqual(byText("Username")?.locator, {
+        kind: "css",
+        value: '[data-test="username"]',
+      });
+      assert.deepEqual(byText("Username")?.alternatives, [
+        { kind: "id", value: "user-name" },
+        { kind: "placeholder", value: "Username" },
+      ]);
+      assert.equal(
+        pageForModel(observed).elements.some((e) => "alternatives" in e),
+        false,
+      );
       const positional = observed.elements.filter((e) => e.text === "Seç");
       assert.equal(positional.length, 2);
       for (const element of positional) {
@@ -2271,5 +2287,385 @@ test("generateSuite retries an empty reply once and states the limits", async ()
     await server.close();
     if (previousKey === undefined) delete process.env.ZC_AI_ENCRYPTION_KEY;
     else process.env.ZC_AI_ENCRYPTION_KEY = previousKey;
+  }
+});
+
+const shopPage = "https://shop.example.test/index.html";
+function libraryFixture() {
+  const dir = mkdtempSync(join(tmpdir(), "zc-library-"));
+  const store = new Store(join(dir, "test.sqlite"));
+  return { dir, store };
+}
+test("element library links re-observations, keeps approvals and versions edits", async () => {
+  const { dir, store } = libraryFixture();
+  const app = await createApp(store);
+  try {
+    const headers = (user = admin) => {
+      const id = randomUUID();
+      store.db
+        .prepare("INSERT INTO sessions VALUES (?,?,?)")
+        .run(id, JSON.stringify(user), Date.now() + 60000);
+      return {
+        host: "127.0.0.1:4000",
+        cookie: `zc_session=${id}`,
+        origin: "http://127.0.0.1:3000",
+        "x-zerocode-client": "local-ui",
+      };
+    };
+    const call = async (
+      method: "GET" | "PUT",
+      url: string,
+      payload?: unknown,
+      user = admin,
+    ) => {
+      const response = await app.inject({
+        method,
+        url,
+        headers: headers(user),
+        ...(payload ? { payload: payload as object } : {}),
+      });
+      return { status: response.statusCode, body: response.json() };
+    };
+    const route = `/v1/projects/${demoProject}/ai/elements`;
+    const username = {
+      tag: "input",
+      text: "Username",
+      role: "textbox",
+      type: "text",
+      locator: { kind: "css", value: '[data-test="username"]' },
+      alternatives: [
+        { kind: "id", value: "user-name" },
+        { kind: "placeholder", value: "Username" },
+      ],
+    };
+    const first = recordObservedElements(
+      store.db,
+      admin.orgId,
+      demoProject,
+      [
+        {
+          url: `${shopPage}?session=1#top`,
+          elements: [
+            username,
+            {
+              tag: "button",
+              text: "Login",
+              role: "button",
+              type: "submit",
+              locator: { kind: "css", value: '[data-test="login-button"]' },
+              alternatives: [{ kind: "id", value: "login-button" }],
+            },
+            {
+              tag: "input",
+              text: "Username",
+              role: "textbox",
+              type: "text",
+              locator: { kind: "id", value: "other-user" },
+            },
+          ],
+        },
+      ],
+      "2026-10-21T10:00:00.000Z",
+    );
+    assert.deepEqual(first, { created: 3, matched: 0 });
+    const list = async (query = "") =>
+      (await call("GET", `${route}${query}`)).body;
+    const initial = await list();
+    assert.equal(initial.total, 3);
+    const byKey = (body: { elements: { elementKey: string }[] }, key: string) =>
+      body.elements.find((e) => e.elementKey === key) as Record<string, any>;
+    // Key suggestion: <page>.<label>, collisions get a suffix.
+    const user = byKey(initial, "index.username");
+    assert.ok(user);
+    assert.ok(byKey(initial, "index.username_2"));
+    assert.ok(byKey(initial, "index.login"));
+    assert.equal(user.pageKey, "index");
+    assert.equal(user.origin, "https://shop.example.test");
+    assert.equal(user.pageUrl, shopPage);
+    assert.deepEqual(user.alternatives, username.alternatives);
+    assert.equal(user.approved, false);
+    assert.equal(user.revision, 1);
+    // Re-observation through an alternative links to the same element.
+    const again = recordObservedElements(
+      store.db,
+      admin.orgId,
+      demoProject,
+      [
+        {
+          url: shopPage,
+          elements: [
+            {
+              ...username,
+              locator: { kind: "id", value: "user-name" },
+              alternatives: [
+                { kind: "role", role: "textbox", value: "Username" } as never,
+              ],
+            },
+          ],
+        },
+      ],
+      "2026-10-21T11:00:00.000Z",
+    );
+    assert.deepEqual(again, { created: 0, matched: 1 });
+    const linked = byKey(await list(), "index.username");
+    assert.equal(linked.id, user.id);
+    assert.equal(linked.lastSeenAt, "2026-10-21T11:00:00.000Z");
+    assert.equal(linked.alternatives.length, 3);
+    assert.equal((await list()).total, 3);
+    // Name, key, page and approval in one revision.
+    const put = (body: Record<string, unknown>, who = admin) =>
+      call("PUT", `${route}/${user.id}`, body, who);
+    const edit = {
+      expectedRevision: 1,
+      elementKey: "login.username",
+      name: "Kullanıcı adı",
+      pageKey: "login",
+      locator: linked.locator,
+      alternatives: linked.alternatives,
+      approved: true,
+    };
+    assert.equal((await put(edit, { ...admin, role: "viewer" })).status, 403);
+    const approved = await put(edit);
+    assert.equal(approved.status, 200);
+    assert.equal(approved.body.element.revision, 2);
+    assert.equal(approved.body.element.approved, true);
+    assert.equal(approved.body.approvalCleared, false);
+    assert.deepEqual(
+      approved.body.history.map((h: { revision: number; action: string }) => [
+        h.revision,
+        h.action,
+      ]),
+      [
+        [2, "approved"],
+        [1, "observed"],
+      ],
+    );
+    // Stale revision is a conflict.
+    const stale = await put({ ...edit, name: "Başka" });
+    assert.equal(stale.status, 409);
+    assert.equal(stale.body.code, "REVISION_CONFLICT");
+    // Approved element is not altered by re-observation.
+    recordObservedElements(store.db, admin.orgId, demoProject, [
+      {
+        url: shopPage,
+        elements: [
+          {
+            ...username,
+            text: "Kullanıcı",
+            alternatives: [{ kind: "label", value: "User" }],
+          },
+        ],
+      },
+    ]);
+    const kept = byKey(await list(), "login.username");
+    assert.equal(kept.id, user.id);
+    assert.equal(kept.approved, true);
+    assert.equal(kept.revision, 2);
+    assert.equal(kept.name, "Kullanıcı adı");
+    assert.equal(kept.label, "Username");
+    assert.deepEqual(kept.locator, linked.locator);
+    assert.equal(kept.alternatives.length, 4);
+    // The key of an approved element is locked; keys are unique per origin.
+    const locked = await put({
+      ...edit,
+      expectedRevision: 2,
+      elementKey: "x.y",
+    });
+    assert.equal(locked.body.code, "ELEMENT_KEY_LOCKED");
+    const login = byKey(await list(), "index.login");
+    const taken = await call("PUT", `${route}/${login.id}`, {
+      expectedRevision: 1,
+      elementKey: "login.username",
+      name: "Giriş",
+      pageKey: "login",
+      locator: login.locator,
+      alternatives: login.alternatives,
+      approved: false,
+    });
+    assert.equal(taken.status, 409);
+    assert.equal(taken.body.code, "ELEMENT_KEY_EXISTS");
+    const duplicate = await put({
+      ...edit,
+      expectedRevision: 2,
+      alternatives: [kept.locator],
+    });
+    assert.equal(duplicate.body.code, "DUPLICATE_LOCATOR");
+    // Making an alternative primary clears approval.
+    const swapped = await put({
+      ...edit,
+      expectedRevision: 2,
+      locator: kept.alternatives[0],
+      alternatives: [kept.locator, ...kept.alternatives.slice(1)],
+    });
+    assert.equal(swapped.status, 200);
+    assert.equal(swapped.body.element.approved, false);
+    assert.equal(swapped.body.approvalCleared, true);
+    assert.equal(swapped.body.element.revision, 3);
+    assert.deepEqual(swapped.body.element.locator, {
+      kind: "id",
+      value: "user-name",
+    });
+    assert.equal(swapped.body.history[0].action, "locator_changed");
+    assert.equal((await list("?approved=true")).total, 0);
+    const reapproved = await put({
+      ...edit,
+      expectedRevision: 3,
+      locator: swapped.body.element.locator,
+      alternatives: swapped.body.element.alternatives,
+    });
+    assert.equal(reapproved.body.element.approved, true);
+    assert.equal((await list("?approved=true")).total, 1);
+    assert.equal((await list("?approved=false")).total, 2);
+    assert.equal((await list("?q=login.user")).total, 1);
+    const detail = await call("GET", `${route}/${user.id}`);
+    assert.equal(detail.body.history.length, 4);
+    assert.equal((await call("GET", `${route}/${randomUUID()}`)).status, 404);
+    // History is immutable.
+    assert.throws(
+      () =>
+        store.db
+          .prepare(
+            "UPDATE ai_element_revisions SET name='x' WHERE element_id=?",
+          )
+          .run(user.id),
+      /immutable ai element revision/,
+    );
+    assert.throws(
+      () =>
+        store.db
+          .prepare("DELETE FROM ai_element_revisions WHERE element_id=?")
+          .run(user.id),
+      /immutable ai element revision/,
+    );
+  } finally {
+    await app.close();
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+test("migration 009 keeps elements saved before the library", () => {
+  const dir = mkdtempSync(join(tmpdir(), "zc-migrate-"));
+  const path = join(dir, "old.sqlite");
+  try {
+    const old = new DatabaseSync(path);
+    for (const file of [
+      "001_initial.sql",
+      "002_locator_checks.sql",
+      "003_ai_assistant.sql",
+      "004_authorized_targets.sql",
+      "005_ai_elements.sql",
+      "006_ai_tests.sql",
+      "007_test_variables.sql",
+      "008_ai_comparisons.sql",
+    ])
+      old.exec(readFileSync(join("infra/migrations", file), "utf8"));
+    old
+      .prepare("INSERT OR IGNORE INTO projects VALUES (?,?,?)")
+      .run(demoProject, admin.orgId, "ZeroCode Demo");
+    const insert = old.prepare(
+      "INSERT INTO ai_page_elements VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+    );
+    const rows = [
+      [
+        randomUUID(),
+        "https://www.saucedemo.com/",
+        "input",
+        "Username",
+        "",
+        "text",
+        "id",
+        "user-name",
+      ],
+      [
+        randomUUID(),
+        "https://www.saucedemo.com/",
+        "input",
+        "Username",
+        "textbox",
+        "text",
+        "css",
+        '[data-test="username"]',
+      ],
+      [
+        randomUUID(),
+        "https://www.saucedemo.com/inventory.html",
+        "button",
+        "Add to cart",
+        "button",
+        "",
+        "role",
+        "Add to cart",
+      ],
+    ];
+    rows.forEach((row, index) =>
+      insert.run(
+        row[0]!,
+        admin.orgId,
+        demoProject,
+        row[1]!,
+        row[2]!,
+        row[3]!,
+        row[4]!,
+        row[5]!,
+        row[6]!,
+        row[7]!,
+        `2026-10-2${index}T00:00:00.000Z`,
+        `2026-10-2${index}T00:00:00.000Z`,
+      ),
+    );
+    old.close();
+    for (let open = 0; open < 2; open++) {
+      const store = new Store(path);
+      const migrated = store.db
+        .prepare("SELECT * FROM ai_page_elements ORDER BY first_seen_at")
+        .all() as Record<string, unknown>[];
+      assert.deepEqual(
+        migrated.map((row) => row.id),
+        rows.map((row) => row[0]),
+      );
+      assert.deepEqual(
+        migrated.map((row) => row.element_key),
+        ["home.username", "home.username_2", "inventory.add_to_cart"],
+      );
+      assert.equal(migrated[0]!.origin, "https://www.saucedemo.com");
+      assert.equal(migrated[2]!.locator_role, "button");
+      assert.equal(migrated[1]!.label, "Username");
+      assert.equal(
+        migrated.every((row) => row.approved === 0 && row.revision === 1),
+        true,
+      );
+      assert.ok(
+        store.db
+          .prepare("SELECT 1 FROM schema_migrations WHERE version=9")
+          .get(),
+      );
+      // Old rows are matched by later observations, not duplicated.
+      recordObservedElements(store.db, admin.orgId, demoProject, [
+        {
+          url: "https://www.saucedemo.com/",
+          elements: [
+            {
+              tag: "input",
+              text: "Username",
+              role: "textbox",
+              type: "text",
+              locator: { kind: "css", value: '[data-test="username"]' },
+              alternatives: [{ kind: "id", value: "user-name" }],
+            },
+          ],
+        },
+      ]);
+      assert.equal(
+        (
+          store.db
+            .prepare("SELECT COUNT(*) AS n FROM ai_page_elements")
+            .get() as { n: number }
+        ).n,
+        3,
+      );
+      store.close();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

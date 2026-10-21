@@ -72,6 +72,8 @@ uygulamayı açtığı anlamına gelmez: deneme canlı yerel demo hedefinde yap�
 | GET        | /v1/ai/providers/:id/models                                        | Kayıtlı provider'ın model listesi (anahtar sunucuda kalır)                  |
 | GET/POST   | /v1/ai/authorized-origins                                          | Yetkili HTTPS hedefleri listele / ekle                                      |
 | GET        | /v1/projects/:projectId/ai/elements                                | AI ile gözlenen sayfa elementleri                                           |
+| GET        | /v1/projects/:projectId/ai/elements/:id                            | Kütüphane elementi ve değişmez geçmişi                                      |
+| PUT        | /v1/projects/:projectId/ai/elements/:id                            | Ad/anahtar/sayfa/locator/onay (`expectedRevision`, 409)                     |
 | DELETE     | /v1/ai/authorized-origins/:id                                      | Yetkili hedefi kaldır                                                       |
 | GET        | /v1/projects/:projectId/ai/conversations                           | Konuşma geçmişi                                                             |
 | GET        | /v1/projects/:projectId/ai/conversations/:id                       | Mesaj, taslak ve çalışma geçmişi                                            |

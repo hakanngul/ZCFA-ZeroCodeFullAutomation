@@ -237,18 +237,50 @@ test(
         "true",
       );
       await page
-        .getByPlaceholder("Element adı veya locator")
+        .getByPlaceholder("Ad, anahtar veya locator ile ara")
         .fill("login-pass");
       await page
         .getByText("testId: login-email")
         .waitFor({ state: "detached" });
       await page.getByText("testId: login-password").waitFor();
-      await page.getByPlaceholder("Element adı veya locator").fill("");
+      await page.getByPlaceholder("Ad, anahtar veya locator ile ara").fill("");
       await page.getByText("testId: login-email").waitFor();
       await page.screenshot({
         path: join(evidence, "ai-elements.png"),
         fullPage: true,
       });
+      // Name, key and approve a library element inline.
+      await page
+        .locator("tr", { hasText: "testId: login-email" })
+        .getByRole("button", { name: /düzenle$/ })
+        .click();
+      await page.getByLabel("Element adı").fill("E-posta alanı");
+      await page.getByLabel("Element anahtarı").fill("login.email");
+      await page.getByLabel("Elementi onayla").check();
+      await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+      await page.getByText("Kaydedildi (sürüm 2).").waitFor();
+      assert.equal(
+        await page.getByLabel("Element anahtarı").isDisabled(),
+        true,
+      );
+      await page.getByLabel("Birincil locator değeri").fill("login-email-x");
+      await page
+        .getByText("Locator değişti: kaydedince onay kaldırılır", {
+          exact: false,
+        })
+        .waitFor();
+      assert.equal(await page.getByLabel("Elementi onayla").isChecked(), false);
+      await page.screenshot({
+        path: join(evidence, "ai-element-edit.png"),
+        fullPage: true,
+      });
+      await page.getByRole("button", { name: "Kapat", exact: true }).click();
+      await page.getByLabel("Kaydedilen element durumu").selectOption("true");
+      await page.getByText("E-posta alanı").waitFor();
+      await page
+        .getByText("testId: login-password")
+        .waitFor({ state: "detached" });
+      await page.getByLabel("Kaydedilen element durumu").selectOption("");
       await page.getByRole("button", { name: /^Testler/ }).click();
       await page.getByRole("heading", { name: "AI suite’ler" }).waitFor();
       await page.getByText(/^Giriş doğrulama suite ·/).waitFor();

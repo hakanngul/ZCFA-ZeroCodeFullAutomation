@@ -16,6 +16,8 @@ import {
   type RunOutcome,
   type Variant,
 } from "../../domain/src/index";
+import { migrateAiElementLibrary } from "./ai-elements";
+export * from "./ai-elements";
 
 export const localDir = resolve(process.env.ZC_DATA_DIR ?? ".local");
 export type Job = {
@@ -63,7 +65,8 @@ export class Store {
   constructor(path = resolve(localDir, "zerocode.sqlite")) {
     this.dataDir = dirname(path);
     mkdirSync(dirname(path), { recursive: true });
-    this.db = new DatabaseSync(path);
+    // API and worker start together; wait for each other's migrations.
+    this.db = new DatabaseSync(path, { timeout: 5000 });
     this.db.exec(
       readFileSync(
         new URL("../../../infra/migrations/001_initial.sql", import.meta.url),
@@ -125,6 +128,16 @@ export class Store {
       readFileSync(
         new URL(
           "../../../infra/migrations/008_ai_comparisons.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    migrateAiElementLibrary(this.db);
+    this.db.exec(
+      readFileSync(
+        new URL(
+          "../../../infra/migrations/009_ai_element_library.sql",
           import.meta.url,
         ),
         "utf8",

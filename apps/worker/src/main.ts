@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import {
   draftIdOf,
   localDir,
+  recordObservedElements,
   Store,
   type Job,
 } from "../../../packages/storage/src/index";
@@ -129,31 +130,14 @@ while (!stopping) {
           .get(job.id, job.lease_token, Date.now());
         if (!valid) return;
         const now = new Date().toISOString();
-        const save = store.db.prepare(
-          `INSERT INTO ai_page_elements VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-           ON CONFLICT(org_id,project_id,page_url,locator_kind,locator_value)
-           DO UPDATE SET tag=excluded.tag,label=excluded.label,role=excluded.role,input_type=excluded.input_type,last_seen_at=excluded.last_seen_at`,
+        // Library matching keeps ids stable across explorations (ADR 013).
+        recordObservedElements(
+          store.db,
+          job.org_id,
+          job.project_id,
+          inspection.pages,
+          now,
         );
-        for (const page of inspection.pages) {
-          const pageUrl = new URL(page.url);
-          pageUrl.search = "";
-          pageUrl.hash = "";
-          for (const element of page.elements)
-            save.run(
-              randomUUID(),
-              job.org_id,
-              job.project_id,
-              pageUrl.href,
-              element.tag,
-              element.text,
-              element.role,
-              element.type,
-              element.locator.kind,
-              element.locator.value,
-              now,
-              now,
-            );
-        }
         store.db
           .prepare(
             "UPDATE ai_drafts SET status='explored',inspection=? WHERE id=? AND org_id=? AND status='running'",

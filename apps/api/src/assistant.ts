@@ -5,7 +5,14 @@ import { resolve } from "node:path";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { z } from "zod";
-import { Store } from "../../../packages/storage/src/index";
+import {
+  aiElement,
+  aiElementHistory,
+  aiElementUpdateSchema,
+  aiElementView,
+  Store,
+  updateAiElement,
+} from "../../../packages/storage/src/index";
 import { DomainError, type Actor } from "../../../packages/domain/src/index";
 import {
   aiSuiteSchema,
@@ -33,6 +40,7 @@ const elementQuery = z.object({
   pageUrl: z.string().max(1000).optional(),
   limit: z.coerce.number().int().min(1).max(500).default(500),
   offset: z.coerce.number().int().min(0).max(100000).default(0),
+  approved: z.enum(["true", "false"]).optional(),
 });
 // Positional CSS paths break when the page layout shifts.
 const fragileSql =
@@ -194,22 +202,29 @@ export function registerAssistant(
     if (query.q) {
       const like = `%${query.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
       where.push(
-        "(label LIKE ? ESCAPE '\\' OR locator_value LIKE ? ESCAPE '\\')",
+        "(label LIKE ? ESCAPE '\\' OR locator_value LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\' OR element_key LIKE ? ESCAPE '\\')",
       );
-      args.push(like, like);
+      args.push(like, like, like, like);
     }
+    if (query.approved)
+      where.push(`approved=${query.approved === "true" ? 1 : 0}`);
     const pages = (
       store.db
         .prepare(
-          `SELECT page_url AS pageUrl,COUNT(*) AS count,SUM(${fragileSql}) AS fragile,MAX(last_seen_at) AS lastSeenAt FROM ai_page_elements WHERE ${where.join(" AND ")} GROUP BY page_url ORDER BY lastSeenAt DESC,page_url`,
+          `SELECT page_url AS pageUrl,COUNT(*) AS count,SUM(${fragileSql}) AS fragile,SUM(approved) AS approved,MAX(last_seen_at) AS lastSeenAt FROM ai_page_elements WHERE ${where.join(" AND ")} GROUP BY page_url ORDER BY lastSeenAt DESC,page_url`,
         )
         .all(...args) as {
         pageUrl: string;
         count: number;
         fragile: number;
+        approved: number;
         lastSeenAt: string;
       }[]
-    ).map((page) => ({ ...page, fragile: Number(page.fragile ?? 0) }));
+    ).map((page) => ({
+      ...page,
+      fragile: Number(page.fragile ?? 0),
+      approved: Number(page.approved ?? 0),
+    }));
     if (query.pageUrl) {
       where.push("page_url=?");
       args.push(query.pageUrl);
@@ -223,11 +238,39 @@ export function registerAssistant(
     const elements = (
       store.db
         .prepare(
-          `SELECT id,page_url AS pageUrl,tag,label,role,input_type AS inputType,locator_kind AS locatorKind,locator_value AS locatorValue,${fragileSql} AS fragile,first_seen_at AS firstSeenAt,last_seen_at AS lastSeenAt FROM ai_page_elements WHERE ${filter} ORDER BY ${fragileSql},last_seen_at DESC,id LIMIT ? OFFSET ?`,
+          `SELECT * FROM ai_page_elements WHERE ${filter} ORDER BY ${fragileSql},last_seen_at DESC,id LIMIT ? OFFSET ?`,
         )
-        .all(...args, query.limit, query.offset) as Record<string, unknown>[]
-    ).map((element) => ({ ...element, fragile: element.fragile === 1 }));
+        .all(...args, query.limit, query.offset) as Parameters<
+        typeof aiElementView
+      >[0][]
+    ).map(aiElementView);
     return { elements, total, pages };
+  });
+  const elementParams = z.object({ projectId: z.uuid(), id: z.uuid() });
+  app.get("/v1/projects/:projectId/ai/elements/:id", async (request) => {
+    const { user, projectId } = scoped(request);
+    const { id } = elementParams.parse(request.params);
+    return {
+      element: aiElementView(aiElement(store.db, user.orgId, projectId, id)),
+      history: aiElementHistory(store.db, user.orgId, projectId, id),
+    };
+  });
+  // Name, key, page, locators and approval of a library element (ADR 013).
+  app.put("/v1/projects/:projectId/ai/elements/:id", async (request) => {
+    const { user, projectId } = scoped(request, true);
+    const { id } = elementParams.parse(request.params);
+    const input = aiElementUpdateSchema.parse(request.body);
+    const result = store.transaction(() => {
+      const updated = updateAiElement(store.db, user, projectId, id, input);
+      if (updated.changed)
+        store.audit(user, projectId, "ai_element.updated", id);
+      return updated;
+    });
+    return {
+      element: result.element,
+      approvalCleared: result.approvalCleared,
+      history: aiElementHistory(store.db, user.orgId, projectId, id),
+    };
   });
   app.post("/v1/ai/authorized-origins", async (request, reply) => {
     const user = actor(request, true);

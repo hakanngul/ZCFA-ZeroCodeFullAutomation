@@ -105,6 +105,21 @@ Keşif sırasında locator önceliği: sayfada tekil `data-testid` / `data-test`
 `nth-of-type` içeren CSS yolları **kırılgan** rozetiyle gösterilir ve suite
 üretim prompt'unda modelden kararlı bir alternatif varken kullanmaması istenir.
 
+Bu liste bir **site element kütüphanesidir** (ADR 013). Keşif her öğe için
+sayfada tekil en fazla 3 locator saklar (birincil + alternatifler); sonraki
+keşifte adaylardan biri aynı sayfadaki bir elementin birincil/alternatif
+locator'ına eşitse aynı element güncellenir (yeni kayıt açılmaz, yeni adaylar
+≤5 alternatife eklenir; onaylı elementin birincil locator'ı ve onayı
+değişmez). Her elemente `<sayfa>.<etiket>` biçiminde anahtar önerilir
+(çakışmada `_2`); anahtar org + proje + origin içinde tekildir. Satırdaki
+**Düzenle** ile ad, anahtar (ör. `login.username`), sayfa anahtarı, birincil
+locator / alternatifler (birincil yap, kaldır) ve onay değiştirilir; "Durum"
+filtresi onaylıları ayırır. Kayıt `PUT /v1/projects/:id/ai/elements/:elementId`
+ile `expectedRevision` ister (eskiyse 409); locator değişikliği onayı kaldırır,
+onaylı elementin anahtarı kilitlidir, her değişiklik salt okunur geçmişe
+yazılır. Alternatifler çalıştırmada otomatik denenmez; suite'ler henüz
+anahtarları kullanmaz (sonraki faz).
+
 ## Mimari
 
 ## AI Test Assistant

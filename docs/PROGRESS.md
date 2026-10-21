@@ -1,5 +1,36 @@
 # Devam noktası — 19 Ekim 2026
 
+## 21 Ekim 2026 — Element kütüphanesi Faz 1: aday locator'lar, adlandırma, onay
+
+Plan `wiggly-plotting-teapot` Faz 1 tamamlandı (Faz 2–4 başlamadı). Keşif her
+DOM düğümü için tekil en fazla 3 locator tutuyor (`ObservedElement.alternatives`,
+model istemine yalnız birincil gider). Migration 009: `ai_page_elements`'a
+korumalı adımla (`PRAGMA table_info`) origin, `element_key`, ad, `page_key`,
+onay, alternatifler (≤5), revizyon, `locator_role`; değişmez
+`ai_element_revisions` (UPDATE/DELETE trigger). ADR 013: anahtar org + proje +
+origin'de tekil, öneri `<sayfa>.<etiket>` + `_2` soneki; gözlem adaylardan biri
+birincil/alternatife eşitse aynı elemente bağlanır, onaylı elementin birincil
+locator'ı ve onayı değişmez. Worker upsert'i `recordObservedElements`'a taşındı.
+API: `GET`/`PUT /v1/projects/:projectId/ai/elements/:id` (`expectedRevision`
+→ 409, locator değişimi onayı kaldırır, onaylı anahtar kilitli,
+`DUPLICATE_LOCATOR`, `ELEMENT_KEY_EXISTS`, `LOCATOR_IN_USE`), listede
+`approved` filtresi. UI: satır içi düzenle paneli (ad, anahtar, sayfa,
+birincil/alternatifler, onay, geçmiş), "Durum" filtresi. SQLite açılışı artık
+5 sn `timeout` ile bekliyor (API/worker aynı anda migration yaparken
+`database is locked` yerine). Testler: aday locator'lar, yeniden gözlemde aynı
+id, onaylı elementin korunması, anahtar önerisi + sonek, eski revizyonla 409,
+locator değişince onay düşmesi, geçmişin değişmezliği, ≤008 şemalı DB'nin
+satırları koruyarak taşınması; UI testi adlandırma/onay. Doğrulama:
+typecheck, format:check, `pnpm test` 37/37, build, `test:e2e` 13/13. Gerçek
+kontrol (`.local/my-data`, önce `/tmp/zc-my-data-backup-20261021.sqlite`
+yedeği): 276 satır kayıpsız taşındı (276 tekil anahtar); SauceDemo giriş
+elementleri UI'dan `login.username`, `login.password`, `login.submit`,
+`login.error`, `login.error_close` olarak adlandırılıp onaylandı (v2). Kanıt:
+`docs/evidence/elements/library-edit.png`, `library-approved.png`. Sınır:
+eski veride aynı düğüm için önceki locator önceliğinden kalma ikinci kayıtlar
+(ör. `id: user-name` / `data-test="username"`) ayrı element olarak kalır;
+gözlemin onaylı elemente eklediği alternatifler revizyon üretmez.
+
 ## 21 Ekim 2026 — Uçtan uca satın alma testi için keşif sınırları
 
 Sorun: Evren `deepseek-v4.1-flash` SauceDemo satın alma isteğinde (giriş →

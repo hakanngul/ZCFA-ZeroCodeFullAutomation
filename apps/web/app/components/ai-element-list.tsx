@@ -1,21 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
+import {
+  AiElementEditor,
+  locatorLabel,
+  type AiElement,
+} from "./ai-element-editor";
 
-type AiElement = {
-  id: string;
+type PageSummary = {
   pageUrl: string;
-  tag: string;
-  label: string;
-  role: string;
-  inputType: string;
-  locatorKind: string;
-  locatorValue: string;
-  fragile: boolean;
-  lastSeenAt: string;
+  count: number;
+  fragile: number;
+  approved: number;
 };
-type PageSummary = { pageUrl: string; count: number; fragile: number };
 type Group = { items: AiElement[]; total: number; loading: boolean };
 type ElementResponse = {
   elements: AiElement[];
@@ -34,9 +32,7 @@ export function shortLabel(text: string, max = 48) {
   return `${(space > max * 0.6 ? cut.slice(0, space) : cut).trimEnd()}…`;
 }
 function locatorText(element: AiElement) {
-  return element.locatorKind === "role"
-    ? `role=${element.role} ${JSON.stringify(element.locatorValue)}`
-    : `${element.locatorKind}: ${element.locatorValue}`;
+  return locatorLabel(element.locator);
 }
 function pageTitle(pageUrl: string) {
   try {
@@ -66,6 +62,8 @@ export function AiElementList({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [groups, setGroups] = useState<Record<string, Group>>({});
   const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
+  const [editing, setEditing] = useState("");
 
   useEffect(() => {
     const timer = setTimeout(() => setQuery(input.trim()), 250);
@@ -74,7 +72,9 @@ export function AiElementList({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     let active = true;
-    void api<ElementResponse>(elementsPath(projectId, { q: query, limit: 1 }))
+    void api<ElementResponse>(
+      elementsPath(projectId, { q: query, approved: status, limit: 1 }),
+    )
       .then((result) => {
         if (!active) return;
         setError("");
@@ -89,7 +89,7 @@ export function AiElementList({ projectId }: { projectId: string }) {
     return () => {
       active = false;
     };
-  }, [projectId, query]);
+  }, [projectId, query, status]);
 
   const load = async (pageUrl: string, offset: number) => {
     setGroups((current) => ({
@@ -104,6 +104,7 @@ export function AiElementList({ projectId }: { projectId: string }) {
       const result = await api<ElementResponse>(
         elementsPath(projectId, {
           q: query,
+          approved: status,
           pageUrl,
           limit: pageSize,
           offset,
@@ -155,9 +156,12 @@ export function AiElementList({ projectId }: { projectId: string }) {
         <span className="eyebrow">AI KEŞFİ</span>
         <h2>Web sitelerinden kaydedilen elementler</h2>
         <p>
-          Chat analizi sırasında görülen DOM öğeleri otomatik saklanır. Yeni
-          sayfa analizi aynı locator kaydını günceller. Sıra numarasına
-          (nth-of-type) dayanan CSS yolları <b>kırılgan</b> olarak işaretlenir.
+          Chat analizi sırasında görülen DOM öğeleri otomatik saklanır; her öğe
+          için en fazla 3 tekil locator (birincil + alternatifler) tutulur. Yeni
+          analiz, locator'larından biri eşleşen kaydı günceller. Elementi
+          adlandırıp anahtar verin ve onaylayın; locator değişikliği onayı
+          kaldırır. Sıra numarasına (nth-of-type) dayanan CSS yolları{" "}
+          <b>kırılgan</b> olarak işaretlenir.
         </p>
       </div>
       <div className="ai-element-filters">
@@ -167,9 +171,21 @@ export function AiElementList({ projectId }: { projectId: string }) {
             type="search"
             aria-label="Kaydedilen element ara"
             value={input}
-            placeholder="Element adı veya locator"
+            placeholder="Ad, anahtar veya locator ile ara"
             onChange={(event) => setInput(event.target.value)}
           />
+        </label>
+        <label>
+          Durum
+          <select
+            aria-label="Kaydedilen element durumu"
+            value={status}
+            onChange={(event) => setStatus(event.target.value)}
+          >
+            <option value="">Tümü</option>
+            <option value="true">Onaylı</option>
+            <option value="false">Onay bekliyor</option>
+          </select>
         </label>
         <label>
           Sayfa
@@ -223,6 +239,7 @@ export function AiElementList({ projectId }: { projectId: string }) {
               <small>{title.host}</small>
               <span className="ai-element-count">
                 {page.count} element
+                {page.approved ? ` · ${page.approved} onaylı` : ""}
                 {page.fragile ? ` · ${page.fragile} kırılgan` : ""}
               </span>
             </button>
@@ -233,41 +250,102 @@ export function AiElementList({ projectId }: { projectId: string }) {
                     <tr>
                       <th>Element</th>
                       <th>Locator</th>
+                      <th>Durum</th>
                       <th>Son gözlem</th>
+                      <th>
+                        <span className="sr-only">İşlem</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {(group?.items ?? []).map((element) => {
-                      const name = element.label || element.tag;
+                      const name = element.name || element.label || element.tag;
+                      const replace = (updated: AiElement) =>
+                        setGroups((current) => ({
+                          ...current,
+                          [page.pageUrl]: {
+                            ...current[page.pageUrl]!,
+                            items: current[page.pageUrl]!.items.map((item) =>
+                              item.id === updated.id ? updated : item,
+                            ),
+                          },
+                        }));
                       return (
-                        <tr key={element.id}>
-                          <td title={name}>
-                            {shortLabel(name)}
-                            <small>
-                              {element.tag}
-                              {element.inputType && ` · ${element.inputType}`}
-                              {element.role && ` · ${element.role}`}
-                            </small>
-                          </td>
-                          <td>
-                            <code title={locatorText(element)}>
-                              {locatorText(element)}
-                            </code>
-                            {element.fragile && (
+                        <Fragment key={element.id}>
+                          <tr>
+                            <td title={name}>
+                              {shortLabel(name)}
+                              <small>
+                                <code className="ai-element-key">
+                                  {element.elementKey}
+                                </code>
+                              </small>
+                              <small>
+                                {element.tag}
+                                {element.inputType && ` · ${element.inputType}`}
+                                {element.role && ` · ${element.role}`}
+                              </small>
+                            </td>
+                            <td>
+                              <code title={locatorText(element)}>
+                                {locatorText(element)}
+                              </code>
+                              {element.alternatives.length > 0 && (
+                                <small>
+                                  +{element.alternatives.length} alternatif
+                                </small>
+                              )}
+                              {element.fragile && (
+                                <span
+                                  className="badge fragile"
+                                  title="Sıra numarasına bağlı CSS; sayfa düzeni değişince kırılabilir."
+                                >
+                                  kırılgan
+                                </span>
+                              )}
+                            </td>
+                            <td>
                               <span
-                                className="badge fragile"
-                                title="Sıra numarasına bağlı CSS; sayfa düzeni değişince kırılabilir."
+                                className={`badge ${element.approved ? "approved" : "awaiting_review"}`}
                               >
-                                kırılgan
+                                {element.approved ? "Onaylı" : "Bekliyor"}
                               </span>
-                            )}
-                          </td>
-                          <td>
-                            {new Date(element.lastSeenAt).toLocaleString(
-                              "tr-TR",
-                            )}
-                          </td>
-                        </tr>
+                              <small>v{element.revision}</small>
+                            </td>
+                            <td>
+                              {new Date(element.lastSeenAt).toLocaleString(
+                                "tr-TR",
+                              )}
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className="secondary"
+                                aria-expanded={editing === element.id}
+                                aria-label={`${element.elementKey} düzenle`}
+                                onClick={() =>
+                                  setEditing(
+                                    editing === element.id ? "" : element.id,
+                                  )
+                                }
+                              >
+                                {editing === element.id ? "Kapat" : "Düzenle"}
+                              </button>
+                            </td>
+                          </tr>
+                          {editing === element.id && (
+                            <tr className="ai-element-edit-row">
+                              <td colSpan={5}>
+                                <AiElementEditor
+                                  projectId={projectId}
+                                  element={element}
+                                  onSaved={replace}
+                                  onClose={() => setEditing("")}
+                                />
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       );
                     })}
                   </tbody>

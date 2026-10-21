@@ -113,9 +113,20 @@ export type ObservedElement = {
   role: string;
   type: string;
   locator: ObservedLocator;
+  /** Further unique locators for the same node (element library, ≤2). */
+  alternatives?: ObservedLocator[];
   /** Positional CSS (nth-of-type) that breaks when the layout changes. */
   fragile?: boolean;
 };
+/** Observation as sent to the model: alternatives stay in the library. */
+export function pageForModel<P extends { elements: ObservedElement[] }>(
+  page: P,
+): P {
+  return {
+    ...page,
+    elements: page.elements.map(({ alternatives: _, ...element }) => element),
+  };
+}
 /** Order-independent identity of a locator (model JSON may reorder keys). */
 export function locatorKey(locator: {
   kind: string;
@@ -284,9 +295,12 @@ type ObservedCandidate = {
   placeholder: string;
   css: string;
 };
+/** Unique locators kept per node: the primary plus up to two alternatives. */
+export const candidateLimit = 3;
 /**
  * Picks the most stable locator that is unique on the page:
  * data-testid / data-test > id > role+name > label > placeholder > anchored CSS.
+ * The next unique ones (in the same order) become alternatives.
  */
 async function stableLocator(
   page: Page,
@@ -317,10 +331,26 @@ async function stableLocator(
   if (c.label) candidates.push({ kind: "label", value: c.label });
   if (c.placeholder)
     candidates.push({ kind: "placeholder", value: c.placeholder });
-  for (const locator of candidates)
-    if (await unique(locator)) return { ...base, locator, fragile: false };
-  const locator: ObservedLocator = { kind: "css", value: c.css };
-  return { ...base, locator, fragile: isFragileLocator(locator) };
+  const found: ObservedLocator[] = [];
+  for (const locator of candidates) {
+    if (found.length >= candidateLimit) break;
+    if (await unique(locator)) found.push(locator);
+  }
+  const css: ObservedLocator = { kind: "css", value: c.css };
+  if (!found.length)
+    return { ...base, locator: css, fragile: isFragileLocator(css) };
+  if (found.length < candidateLimit && c.css && (await unique(css)))
+    found.push(css);
+  const [locator, ...alternatives] = found as [
+    ObservedLocator,
+    ...ObservedLocator[],
+  ];
+  return {
+    ...base,
+    locator,
+    ...(alternatives.length ? { alternatives } : {}),
+    fragile: false,
+  };
 }
 export async function observePage(page: Page): Promise<ObservedPage> {
   const candidates: ObservedCandidate[] = await page
@@ -564,7 +594,7 @@ export async function exploreTarget(
                     title,
                   })),
                   path: result.path,
-                  currentPage: current,
+                  currentPage: pageForModel(current),
                 },
                 variables,
               ),
@@ -688,7 +718,7 @@ export async function generateSuite(
             userRequest: prompt,
             targetUrl: target.href,
             availableVariables: variablesForModel(variables),
-            observedPages: explored.pages,
+            observedPages: explored.pages.map(pageForModel),
             explorationPath: explored.path,
             ...(revision
               ? {
