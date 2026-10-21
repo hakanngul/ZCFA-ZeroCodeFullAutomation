@@ -36,6 +36,7 @@ import {
   buildPromotedTest,
   compilePromoted,
   evidencedPass,
+  promotedChecksum,
   verifyPlan,
 } from "../packages/assistant/src/promote";
 import {
@@ -3253,6 +3254,467 @@ test("migration moves silently added alternatives of approved elements to sugges
     ]);
     assert.equal(after.revision, 2);
     assert.equal(after.approved, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("element updates list affected tests; new versions are created on request", async () => {
+  const { dir, store } = libraryFixture();
+  const app = await createApp(store);
+  try {
+    const other = { ...admin, orgId: randomUUID() };
+    const call = async (
+      method: "GET" | "PUT" | "POST",
+      url: string,
+      payload?: unknown,
+      user = admin,
+    ) => {
+      const id = randomUUID();
+      store.db
+        .prepare("INSERT INTO sessions VALUES (?,?,?)")
+        .run(id, JSON.stringify(user), Date.now() + 60000);
+      const response = await app.inject({
+        method,
+        url,
+        headers: {
+          host: "127.0.0.1:4000",
+          cookie: `zc_session=${id}`,
+          origin: "http://127.0.0.1:3000",
+          "x-zerocode-client": "local-ui",
+        },
+        ...(payload ? { payload: payload as object } : {}),
+      });
+      return { status: response.statusCode, body: response.json() };
+    };
+    const root = `/v1/projects/${demoProject}/ai`;
+    store.db
+      .prepare("INSERT INTO ai_authorized_origins VALUES (?,?,?,?)")
+      .run(
+        randomUUID(),
+        admin.orgId,
+        "https://shop.example.test",
+        new Date().toISOString(),
+      );
+    const page = {
+      title: "Shop",
+      url: shopPage,
+      elements: [
+        {
+          tag: "input",
+          text: "Username",
+          role: "textbox",
+          type: "text",
+          locator: { kind: "id", value: "user-name" },
+          alternatives: [{ kind: "testId", value: "username" }],
+        },
+        {
+          tag: "button",
+          text: "Login",
+          role: "button",
+          type: "submit",
+          locator: { kind: "id", value: "login-button" },
+          alternatives: [{ kind: "testId", value: "login-button" }],
+        },
+      ],
+    };
+    recordObservedElements(store.db, admin.orgId, demoProject, [page as never]);
+    const listed = (await call("GET", `${root}/elements`)).body.elements as {
+      id: string;
+      label: string;
+      revision: number;
+      locator: unknown;
+      alternatives: unknown[];
+    }[];
+    const edit = (
+      element: (typeof listed)[number],
+      key: string,
+      body: Record<string, unknown> = {},
+    ) =>
+      call("PUT", `${root}/elements/${element.id}`, {
+        expectedRevision: element.revision,
+        elementKey: key,
+        name: key,
+        pageKey: "login",
+        locator: element.locator,
+        alternatives: element.alternatives,
+        approved: true,
+        ...body,
+      });
+    const userEl = listed.find((e) => e.label === "Username")!;
+    const loginEl = listed.find((e) => e.label === "Login")!;
+    assert.equal((await edit(userEl, "login.username")).status, 200);
+    assert.equal((await edit(loginEl, "login.submit")).status, 200);
+
+    const conversationId = randomUUID();
+    store.db
+      .prepare("INSERT INTO ai_conversations VALUES (?,?,?,?,?)")
+      .run(
+        conversationId,
+        admin.orgId,
+        demoProject,
+        "c",
+        new Date().toISOString(),
+      );
+    const suite = {
+      title: "Giriş",
+      targetUrl: shopPage,
+      scenarios: [
+        {
+          title: "Giriş yapar",
+          category: "positive",
+          actions: [
+            { kind: "fill", element: "login.username", value: "x" },
+            { kind: "click", element: "login.submit" },
+            { kind: "assertVisible", element: "login.submit" },
+          ],
+        },
+      ],
+    };
+    const draftId = randomUUID();
+    store.db
+      .prepare("INSERT INTO ai_drafts VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(
+        draftId,
+        admin.orgId,
+        demoProject,
+        conversationId,
+        randomUUID(),
+        "mock",
+        shopPage,
+        JSON.stringify({ pages: [page], path: [] }),
+        JSON.stringify(suite),
+        "ready",
+        null,
+        new Date().toISOString(),
+      );
+    const saved = await call("POST", `${root}/drafts/${draftId}/save`, suite);
+    assert.equal(saved.status, 201);
+    const promoted = await call(
+      "POST",
+      `${root}/suites/${saved.body.id}/promote`,
+    );
+    assert.equal(promoted.status, 201);
+    const testId = promoted.body.test.testId as string;
+    const v1Checksum = promoted.body.checksum as string;
+    const impact = (element: { id: string }, user = admin) =>
+      call("GET", `${root}/elements/${element.id}/impact`, undefined, user);
+    const tests = async () =>
+      (await call("GET", `${root}/tests`)).body.tests as {
+        revision: number;
+        latest: boolean;
+        stale_elements: { elementKey: string; pinnedRevision: number }[];
+      }[];
+    assert.deepEqual((await impact(userEl)).body.tests, []);
+    assert.deepEqual((await tests())[0]!.stale_elements, []);
+
+    // Primary ↔ alternative swap: new revision, approval cleared.
+    const swapped = await edit({ ...userEl, revision: 2 }, "login.username", {
+      locator: { kind: "testId", value: "username" },
+      alternatives: [{ kind: "id", value: "user-name" }],
+      approved: false,
+    });
+    assert.equal(swapped.body.element.revision, 3);
+    const stale = await impact(userEl);
+    assert.equal(stale.status, 200);
+    assert.equal(stale.body.tests.length, 1);
+    const row = stale.body.tests[0];
+    assert.equal(row.testId, testId);
+    assert.equal(row.testRevision, 1);
+    assert.equal(row.pinnedRevision, 2);
+    assert.equal(row.currentRevision, 3);
+    assert.deepEqual(row.diff.primary, {
+      from: { kind: "id", value: "user-name" },
+      to: { kind: "testId", value: "username" },
+    });
+    assert.deepEqual(row.diff.alternatives, {
+      added: [{ kind: "id", value: "user-name" }],
+      removed: [{ kind: "testId", value: "username" }],
+    });
+    assert.equal(row.diff.name, null);
+    assert.deepEqual(row.unavailable, [
+      { elementKey: "login.username", reason: "unapproved" },
+    ]);
+    assert.deepEqual(
+      (await tests())[0]!.stale_elements.map((s) => s.elementKey),
+      ["login.username"],
+    );
+
+    // Unapproved element → refused with the list; nothing written.
+    const refused = await call("POST", `${root}/tests/${testId}/versions`, {
+      expectedRevision: 1,
+    });
+    assert.equal(refused.status, 409);
+    assert.equal(refused.body.code, "ELEMENT_UNAVAILABLE");
+    assert.deepEqual(refused.body.details.unavailable, [
+      { elementKey: "login.username", reason: "unapproved" },
+    ]);
+    assert.match(refused.body.message, /login\.username \(onaysız\)/);
+    const count = () =>
+      store.db.prepare("SELECT count(*) AS n FROM ai_tests").get()!.n;
+    assert.equal(count(), 1);
+
+    // Re-approve (v4), then create the new version explicitly.
+    const reapproved = await edit(
+      { ...userEl, ...swapped.body.element },
+      "login.username",
+      { approved: true },
+    );
+    assert.equal(reapproved.body.element.revision, 4);
+    assert.equal(
+      (
+        await call("POST", `${root}/tests/${testId}/versions`, {
+          expectedRevision: 2,
+        })
+      ).body.code,
+      "REVISION_CONFLICT",
+    );
+    // Other org: neither impact nor versions are visible.
+    assert.equal((await impact(userEl, other)).status, 404);
+    assert.equal(
+      (
+        await call(
+          "POST",
+          `${root}/tests/${testId}/versions`,
+          { expectedRevision: 1 },
+          other,
+        )
+      ).status,
+      404,
+    );
+    assert.equal(
+      (await call("GET", `${root}/tests`, undefined, other)).status,
+      404,
+    );
+
+    const created = await call("POST", `${root}/tests/${testId}/versions`, {
+      expectedRevision: 1,
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.test.revision, 2);
+    assert.deepEqual(created.body.test.derivedFrom, {
+      revision: 1,
+      reason: "element_update",
+    });
+    assert.deepEqual(created.body.changed, [
+      { elementKey: "login.username", from: 2, to: 4 },
+    ]);
+    const pinnedOf = (
+      t: { elements: { elementKey?: string }[] },
+      key: string,
+    ) =>
+      t.elements.find((e) => e.elementKey === key) as {
+        revision: number;
+        locator: unknown;
+      };
+    assert.equal(pinnedOf(created.body.test, "login.username").revision, 4);
+    assert.deepEqual(pinnedOf(created.body.test, "login.username").locator, {
+      kind: "testId",
+      value: "username",
+    });
+    assert.equal(pinnedOf(created.body.test, "login.submit").revision, 2);
+    assert.deepEqual(created.body.test.scenarios, promoted.body.test.scenarios);
+    assert.equal(created.body.previousChecksum, v1Checksum);
+    assert.notEqual(created.body.checksum, v1Checksum);
+    assert.equal(created.body.checksum, promotedChecksum(created.body.test));
+    // The old version is unchanged and still verifies.
+    const v1 = await call("GET", `${root}/tests/${testId}/versions/1`);
+    assert.equal(v1.status, 200);
+    assert.equal(v1.body.checksum, v1Checksum);
+    assert.deepEqual(v1.body.test, promoted.body.test);
+    assert.equal(pinnedOf(v1.body.test, "login.username").revision, 2);
+    assert.throws(
+      () => store.db.prepare("UPDATE ai_tests SET title='x'").run(),
+      /immutable ai test/,
+    );
+    const after = await tests();
+    assert.deepEqual(
+      after.map((t) => [t.revision, t.latest, t.stale_elements.length]),
+      [
+        [2, true, 0],
+        [1, false, 0],
+      ],
+    );
+    assert.deepEqual((await impact(userEl)).body.tests, []);
+    assert.equal(
+      (
+        await call("POST", `${root}/tests/${testId}/versions`, {
+          expectedRevision: 2,
+        })
+      ).body.code,
+      "TEST_UP_TO_DATE",
+    );
+    // The suite still maps to its first promotion; no duplicate suite rows.
+    const again = await call("POST", `${root}/suites/${saved.body.id}/promote`);
+    assert.equal(again.status, 200);
+    assert.equal(again.body.test.revision, 1);
+    const suites = (await call("GET", `${root}/suites`)).body.suites;
+    assert.equal(suites.length, 1);
+    assert.deepEqual(suites[0].promoted, { testId, revision: 1 });
+
+    // Only the latest version counts: login.submit changes after v2.
+    const loginNow = (await call("GET", `${root}/elements/${loginEl.id}`)).body
+      .element;
+    await edit(loginNow, "login.submit", { name: "Giriş düğmesi" });
+    const loginImpact = (await impact(loginEl)).body.tests;
+    assert.equal(loginImpact.length, 1);
+    assert.equal(loginImpact[0].testRevision, 2);
+    assert.deepEqual(loginImpact[0].diff.name, {
+      from: "login.submit",
+      to: "Giriş düğmesi",
+    });
+    assert.equal(loginImpact[0].diff.primary, null);
+    assert.deepEqual(loginImpact[0].unavailable, []);
+
+    // The new version runs through the existing pipeline with new pins.
+    const run = await call("POST", `${root}/tests/${testId}/runs`, {
+      revision: 2,
+    });
+    assert.equal(run.status, 202);
+    const plan = JSON.parse(
+      store.db
+        .prepare("SELECT plan FROM ai_test_runs WHERE id=?")
+        .get(run.body.id)!.plan as string,
+    );
+    assert.equal(plan.testRevision, 2);
+    assert.equal(
+      plan.elements.find(
+        (e: { elementKey: string }) => e.elementKey === "login.username",
+      ).revision,
+      4,
+    );
+  } finally {
+    await app.close();
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("migration 011 drops the one-version-per-suite constraint and keeps rows", () => {
+  const dir = mkdtempSync(join(tmpdir(), "zc-migrate-011-"));
+  const path = join(dir, "old.sqlite");
+  try {
+    const old = new DatabaseSync(path);
+    for (const file of [
+      "001_initial.sql",
+      "002_locator_checks.sql",
+      "003_ai_assistant.sql",
+      "004_authorized_targets.sql",
+      "005_ai_elements.sql",
+      "006_ai_tests.sql",
+    ])
+      old.exec(readFileSync(join("infra/migrations", file), "utf8"));
+    const now = new Date().toISOString();
+    const [conversation, draft, suite, testId, runId] = [1, 2, 3, 4, 5].map(
+      () => randomUUID(),
+    );
+    old
+      .prepare("INSERT OR IGNORE INTO projects VALUES (?,?,?)")
+      .run(demoProject, admin.orgId, "ZeroCode Demo");
+    old
+      .prepare("INSERT INTO ai_conversations VALUES (?,?,?,?,?)")
+      .run(conversation!, admin.orgId, demoProject, "c", now);
+    old
+      .prepare("INSERT INTO ai_drafts VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(
+        draft!,
+        admin.orgId,
+        demoProject,
+        conversation!,
+        "p",
+        "m",
+        shopPage,
+        null,
+        null,
+        "ready",
+        null,
+        now,
+      );
+    old
+      .prepare("INSERT INTO ai_suites VALUES (?,?,?,?,?,?)")
+      .run(suite!, admin.orgId, demoProject, draft!, "{}", now);
+    const insertTest = old.prepare(
+      "INSERT INTO ai_tests VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+    );
+    const row = (revision: number) =>
+      [
+        testId!,
+        revision,
+        admin.orgId,
+        demoProject,
+        suite!,
+        conversation!,
+        "T",
+        "https://shop.example.test",
+        "{}",
+        "c",
+        now,
+      ] as const;
+    insertTest.run(...row(1));
+    assert.throws(() => insertTest.run(...row(2)), /UNIQUE/);
+    old
+      .prepare("INSERT INTO ai_test_runs VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+      .run(
+        runId!,
+        admin.orgId,
+        demoProject,
+        testId!,
+        1,
+        "{}",
+        "c",
+        "passed",
+        "{}",
+        now,
+        now,
+      );
+    old.close();
+
+    const store = new Store(path);
+    try {
+      store.db
+        .prepare("INSERT INTO ai_tests VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+        .run(...row(2));
+      assert.equal(
+        store.db.prepare("SELECT count(*) AS n FROM ai_tests").get()!.n,
+        2,
+      );
+      assert.equal(
+        store.db.prepare("SELECT test_id FROM ai_test_runs").get()!.test_id,
+        testId,
+      );
+      assert.throws(
+        () => store.db.prepare("DELETE FROM ai_tests").run(),
+        /immutable ai test/,
+      );
+      assert.equal(
+        store.db.prepare("PRAGMA foreign_keys").get()!.foreign_keys,
+        1,
+      );
+      // Runs still reference an existing version.
+      assert.throws(
+        () =>
+          store.db
+            .prepare("INSERT INTO ai_test_runs VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+            .run(
+              randomUUID(),
+              admin.orgId,
+              demoProject,
+              testId!,
+              9,
+              "{}",
+              "c",
+              "queued",
+              null,
+              now,
+              null,
+            ),
+        /FOREIGN KEY/,
+      );
+    } finally {
+      store.close();
+    }
+    // Reopening is a no-op.
+    new Store(path).close();
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

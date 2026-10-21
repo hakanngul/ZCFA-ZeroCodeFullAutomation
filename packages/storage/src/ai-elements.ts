@@ -883,3 +883,71 @@ export function resolveElementPins(
   }
   return result;
 }
+
+/** One immutable element revision (pinned snapshot), scoped to org + project. */
+export function aiElementRevision(
+  db: DatabaseSync,
+  orgId: string,
+  projectId: string,
+  elementId: string,
+  revision: number,
+) {
+  const row = db
+    .prepare(
+      "SELECT * FROM ai_element_revisions WHERE element_id=? AND revision=? AND org_id=? AND project_id=?",
+    )
+    .get(elementId, revision, orgId, projectId) as
+    Record<string, string | number> | undefined;
+  return row
+    ? {
+        elementKey: row.element_key as string,
+        name: row.name as string,
+        approved: row.approved === 1,
+        locator: JSON.parse(row.locator as string) as LibraryLocator,
+        alternatives: JSON.parse(
+          row.alternatives as string,
+        ) as LibraryLocator[],
+      }
+    : undefined;
+}
+/**
+ * Re-pins references to the current revision of their element (ADR 015).
+ * Removed or unapproved elements are reported, never silently skipped.
+ * The pin's own key is kept: it is what the test's scenarios refer to.
+ */
+export function currentElementBindings(
+  db: DatabaseSync,
+  orgId: string,
+  projectId: string,
+  pins: ElementPin[],
+) {
+  const find = db.prepare(
+    "SELECT * FROM ai_page_elements WHERE id=? AND org_id=? AND project_id=?",
+  );
+  const bindings: ElementBinding[] = [];
+  const unavailable: {
+    elementKey: string;
+    reason: "removed" | "unapproved";
+  }[] = [];
+  for (const pin of pins) {
+    const row = find.get(pin.elementId, orgId, projectId) as
+      ElementRow | undefined;
+    if (!row)
+      unavailable.push({ elementKey: pin.elementKey, reason: "removed" });
+    else if (row.approved !== 1)
+      unavailable.push({ elementKey: pin.elementKey, reason: "unapproved" });
+    else {
+      // Approval always writes a revision row; this is a safety net.
+      snapshot(db, row, "pinned", "system", new Date().toISOString());
+      bindings.push({
+        elementKey: pin.elementKey,
+        elementId: row.id,
+        revision: row.revision,
+        name: row.name,
+        pageUrl: row.page_url,
+        locator: primaryOf(row),
+      });
+    }
+  }
+  return { bindings, unavailable };
+}

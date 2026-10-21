@@ -2,9 +2,15 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
+  aiElement,
+  aiElementRevision,
+  aiElementView,
+  currentElementBindings,
   resolveElementPins,
   Store,
   suitePins,
+  type ElementPin,
+  type LibraryLocator,
 } from "../../../packages/storage/src/index";
 import { DomainError, type Actor } from "../../../packages/domain/src/index";
 import { aiSuiteSchema } from "../../../packages/assistant/src/spec";
@@ -16,8 +22,26 @@ import {
   buildPromotedTest,
   compilePromoted,
   promotedChecksum,
+  repinPromotedTest,
   type PromotedTest,
 } from "../../../packages/assistant/src/promote";
+
+const unavailableNames = { removed: "silinmiş", unapproved: "onaysız" };
+/** Library references of a test version (older tests have none). */
+function testPins(test: PromotedTest): ElementPin[] {
+  return test.elements.flatMap((e) =>
+    e.elementKey && e.elementId && e.revision
+      ? [
+          {
+            elementKey: e.elementKey,
+            elementId: e.elementId,
+            revision: e.revision,
+          },
+        ]
+      : [],
+  );
+}
+const locatorText = (l: LibraryLocator) => JSON.stringify(l);
 
 type Scoped = (
   request: FastifyRequest,
@@ -56,6 +80,44 @@ export function registerPromotedTests(
       );
     return { test, checksum: row.checksum as string };
   }
+  /** Latest version of every test in the project (older versions never change). */
+  function latestTests(user: Actor, projectId: string) {
+    return store.db
+      .prepare(
+        "SELECT t.id,t.revision,t.title,t.definition FROM ai_tests t WHERE t.org_id=? AND t.project_id=? AND t.revision=(SELECT max(x.revision) FROM ai_tests x WHERE x.id=t.id AND x.org_id=t.org_id) ORDER BY t.created_at DESC LIMIT 500",
+      )
+      .all(user.orgId, projectId)
+      .map((row) => ({
+        id: row.id as string,
+        revision: row.revision as number,
+        title: row.title as string,
+        test: JSON.parse(row.definition as string) as PromotedTest,
+      }));
+  }
+  /**
+   * Pins of a test whose element has a newer revision or no longer exists
+   * (ADR 015). Unapproved elements count too: the test cannot run them.
+   */
+  function staleElements(user: Actor, projectId: string, test: PromotedTest) {
+    const current = store.db.prepare(
+      "SELECT revision,approved FROM ai_page_elements WHERE id=? AND org_id=? AND project_id=?",
+    );
+    return testPins(test).flatMap((pin) => {
+      const row = current.get(pin.elementId, user.orgId, projectId) as
+        { revision: number; approved: number } | undefined;
+      if (row && row.revision <= pin.revision && row.approved === 1) return [];
+      return [
+        {
+          elementKey: pin.elementKey,
+          elementId: pin.elementId,
+          pinnedRevision: pin.revision,
+          currentRevision: row?.revision ?? null,
+          approved: row?.approved === 1,
+          removed: !row,
+        },
+      ];
+    });
+  }
   app.post(
     "/v1/projects/:projectId/ai/suites/:id/promote",
     async (request, reply) => {
@@ -80,7 +142,7 @@ export function registerPromotedTests(
         // One suite is promoted once; repeating the call returns that version.
         const existing = store.db
           .prepare(
-            "SELECT id,revision FROM ai_tests WHERE org_id=? AND suite_id=?",
+            "SELECT id,revision FROM ai_tests WHERE org_id=? AND suite_id=? ORDER BY revision LIMIT 1",
           )
           .get(user.orgId, id);
         if (existing)
@@ -186,6 +248,12 @@ export function registerPromotedTests(
   app.get("/v1/projects/:projectId/ai/tests", async (request) => {
     const { user, projectId } = scoped(request);
     const origins = store.authorizedOrigins(user.orgId);
+    const latest = new Map(
+      latestTests(user, projectId).map((t) => [
+        t.id,
+        { revision: t.revision, stale: staleElements(user, projectId, t.test) },
+      ]),
+    );
     return {
       tests: store.db
         .prepare(
@@ -199,7 +267,15 @@ export function registerPromotedTests(
           } catch {
             authorized = false;
           }
-          return { ...row, authorized };
+          const head = latest.get(row.id as string);
+          const isLatest = head?.revision === row.revision;
+          // Only the latest version is flagged; older ones are history.
+          return {
+            ...row,
+            authorized,
+            latest: isLatest,
+            stale_elements: isLatest ? head!.stale : [],
+          };
         }),
     };
   });
@@ -211,6 +287,164 @@ export function registerPromotedTests(
           .object({ id: z.uuid(), revision: z.coerce.number().int().min(1) })
           .parse(request.params);
       return version(user, projectId, id, revision);
+    },
+  );
+  // Element detail "Etkilenen testler": latest versions pinning an older revision.
+  app.get("/v1/projects/:projectId/ai/elements/:id/impact", async (request) => {
+    const { user, projectId } = scoped(request),
+      { id } = idParam.parse(request.params);
+    const element = aiElementView(
+      aiElement(store.db, user.orgId, projectId, id),
+    );
+    const tests = latestTests(user, projectId).flatMap(
+      ({ id: testId, revision, title, test }) => {
+        const pins = testPins(test);
+        const pin = pins.find(
+          (p) => p.elementId === id && p.revision < element.revision,
+        );
+        if (!pin) return [];
+        const pinned = aiElementRevision(
+          store.db,
+          user.orgId,
+          projectId,
+          id,
+          pin.revision,
+        );
+        const was = pinned?.alternatives.map(locatorText) ?? [];
+        const now = element.alternatives.map(locatorText);
+        const blocked = currentElementBindings(
+          store.db,
+          user.orgId,
+          projectId,
+          pins,
+        ).unavailable;
+        return [
+          {
+            testId,
+            title,
+            testRevision: revision,
+            elementKey: pin.elementKey,
+            pinnedRevision: pin.revision,
+            currentRevision: element.revision,
+            diff: {
+              primary:
+                pinned &&
+                locatorText(pinned.locator) !== locatorText(element.locator)
+                  ? { from: pinned.locator, to: element.locator }
+                  : null,
+              alternatives: {
+                added: element.alternatives.filter(
+                  (l) => !was.includes(locatorText(l)),
+                ),
+                removed: (pinned?.alternatives ?? []).filter(
+                  (l) => !now.includes(locatorText(l)),
+                ),
+              },
+              name:
+                pinned && pinned.name !== element.name
+                  ? { from: pinned.name, to: element.name }
+                  : null,
+              snapshotMissing: !pinned,
+            },
+            // Elements of this test that block a new version right now.
+            unavailable: blocked,
+          },
+        ];
+      },
+    );
+    return {
+      element: {
+        id: element.id,
+        elementKey: element.elementKey,
+        revision: element.revision,
+        approved: element.approved,
+      },
+      tests,
+    };
+  });
+  // Human-initiated new version with current approved element revisions (ADR 015).
+  app.post(
+    "/v1/projects/:projectId/ai/tests/:id/versions",
+    async (request, reply) => {
+      const { user, projectId } = scoped(request, true),
+        { id } = idParam.parse(request.params),
+        input = z
+          .object({ expectedRevision: z.number().int().min(1) })
+          .strict()
+          .parse(request.body ?? {});
+      const result = store.transaction(() => {
+        const { test, checksum: previous } = version(user, projectId, id);
+        if (test.revision !== input.expectedRevision)
+          throw new DomainError(
+            "REVISION_CONFLICT",
+            `Test bu arada değişti (güncel sürüm v${test.revision}).`,
+            409,
+          );
+        const pins = testPins(test);
+        const { bindings, unavailable } = currentElementBindings(
+          store.db,
+          user.orgId,
+          projectId,
+          pins,
+        );
+        if (unavailable.length)
+          throw new DomainError(
+            "ELEMENT_UNAVAILABLE",
+            `Yeni sürüm oluşturulamadı; kullanılamayan elementler: ${unavailable
+              .map((u) => `${u.elementKey} (${unavailableNames[u.reason]})`)
+              .join(", ")}. Elementi onaylayın ya da testi yeniden üretin.`,
+            409,
+            { unavailable },
+          );
+        const changed = bindings.flatMap((b) => {
+          const pin = pins.find((p) => p.elementId === b.elementId)!;
+          return b.revision === pin.revision
+            ? []
+            : [
+                {
+                  elementKey: pin.elementKey,
+                  from: pin.revision,
+                  to: b.revision,
+                },
+              ];
+        });
+        if (!changed.length)
+          throw new DomainError(
+            "TEST_UP_TO_DATE",
+            "Test zaten güncel element sürümlerini kullanıyor.",
+            409,
+          );
+        const row = store.db
+          .prepare(
+            "SELECT suite_id,conversation_id,target_origin FROM ai_tests WHERE id=? AND revision=? AND org_id=?",
+          )
+          .get(id, test.revision, user.orgId)!;
+        const next = repinPromotedTest(test, test.revision + 1, bindings);
+        const checksum = promotedChecksum(next);
+        store.db
+          .prepare("INSERT INTO ai_tests VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+          .run(
+            id,
+            next.revision,
+            user.orgId,
+            projectId,
+            row.suite_id as string,
+            row.conversation_id as string,
+            next.title,
+            row.target_origin as string,
+            JSON.stringify(next),
+            checksum,
+            new Date().toISOString(),
+          );
+        store.audit(
+          user,
+          projectId,
+          "ai_test.element_update",
+          `${id}@${next.revision}`,
+        );
+        return { test: next, checksum, previousChecksum: previous, changed };
+      });
+      return reply.code(201).send(result);
     },
   );
   app.post(

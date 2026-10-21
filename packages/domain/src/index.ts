@@ -8,6 +8,8 @@ export class DomainError extends Error {
     public code: string,
     message: string,
     public status = 400,
+    /** Optional machine-readable context sent with the error response. */
+    public details?: unknown,
   ) {
     super(message);
   }

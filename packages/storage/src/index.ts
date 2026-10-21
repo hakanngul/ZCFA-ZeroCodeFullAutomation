@@ -62,6 +62,44 @@ export function draftIdOf(job: Pick<Job, "id" | "kind" | "payload">) {
     return "";
   }
 }
+/**
+ * Migration 011 rebuilds ai_tests (rows, checksums and triggers kept) without
+ * UNIQUE(org_id,suite_id). SQLite cannot drop a constraint in place; the
+ * rebuild needs foreign keys off, which only applies outside a transaction.
+ */
+export function migrateAiTestVersions(db: DatabaseSync, sql: string) {
+  const done = () =>
+    !!db.prepare("SELECT 1 FROM schema_migrations WHERE version=11").get();
+  if (done()) return;
+  const foreignKeys = Number(
+    (db.prepare("PRAGMA foreign_keys").get() as { foreign_keys: number })
+      .foreign_keys,
+  );
+  db.exec("PRAGMA foreign_keys=OFF");
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      // API and worker may race here; the loser sees version 11 and skips.
+      if (!done()) {
+        const before = db.prepare("SELECT count(*) AS n FROM ai_tests").get()!
+          .n as number;
+        db.exec(sql);
+        const after = db.prepare("SELECT count(*) AS n FROM ai_tests").get()!
+          .n as number;
+        if (after !== before)
+          throw new Error(`ai_tests migration lost rows (${before}→${after})`);
+        if (db.prepare("PRAGMA foreign_key_check(ai_test_runs)").all().length)
+          throw new Error("ai_tests migration broke ai_test_runs references");
+      }
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  } finally {
+    db.exec(`PRAGMA foreign_keys=${foreignKeys ? "ON" : "OFF"}`);
+  }
+}
 export class Store {
   db: DatabaseSync;
   dataDir: string;
@@ -151,6 +189,16 @@ export class Store {
       readFileSync(
         new URL(
           "../../../infra/migrations/010_ai_suite_elements.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    migrateAiTestVersions(
+      this.db,
+      readFileSync(
+        new URL(
+          "../../../infra/migrations/011_ai_test_versions.sql",
           import.meta.url,
         ),
         "utf8",

@@ -700,7 +700,7 @@ export function registerAssistant(
     return {
       suites: store.db
         .prepare(
-          "SELECT s.id,s.definition,s.created_at,t.id AS test_id,t.revision AS test_revision FROM ai_suites s LEFT JOIN ai_tests t ON t.suite_id=s.id AND t.org_id=s.org_id WHERE s.org_id=? AND s.project_id=? ORDER BY s.created_at DESC",
+          "SELECT s.id,s.definition,s.created_at,t.id AS test_id,t.revision AS test_revision FROM ai_suites s LEFT JOIN ai_tests t ON t.suite_id=s.id AND t.org_id=s.org_id AND t.revision=(SELECT min(x.revision) FROM ai_tests x WHERE x.suite_id=s.id AND x.org_id=s.org_id) WHERE s.org_id=? AND s.project_id=? ORDER BY s.created_at DESC",
         )
         .all(user.orgId, projectId)
         .map(({ test_id, test_revision, ...row }) => ({

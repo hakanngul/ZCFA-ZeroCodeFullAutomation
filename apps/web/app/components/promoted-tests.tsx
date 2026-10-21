@@ -14,6 +14,15 @@ type TestRow = {
   scenario_count: number;
   element_count: number;
   authorized: boolean;
+  latest: boolean;
+  /** Library elements of the latest version with a newer revision (ADR 015). */
+  stale_elements: {
+    elementKey: string;
+    pinnedRevision: number;
+    currentRevision: number | null;
+    approved: boolean;
+    removed: boolean;
+  }[];
 };
 type RunRow = {
   id: string;
@@ -87,12 +96,33 @@ export function PromotedTests({
   onRun: (runId: string) => void;
 }) {
   const [tests, setTests] = useState<TestRow[]>([]),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [message, setMessage] = useState(""),
+    [busy, setBusy] = useState(""),
+    [reload, setReload] = useState(0);
   useEffect(() => {
     void api<{ tests: TestRow[] }>(`/v1/projects/${projectId}/ai/tests`)
       .then((data) => setTests(data.tests))
       .catch((e) => setError(String(e)));
-  }, [projectId, reloadKey]);
+  }, [projectId, reloadKey, reload]);
+  const newVersion = async (v: TestRow) => {
+    setBusy(v.id);
+    setError("");
+    setMessage("");
+    try {
+      const created = await createElementUpdateVersion(projectId, v);
+      setMessage(
+        `${v.title}: v${created.test.revision} oluşturuldu (${created.changed
+          .map((c) => `${c.elementKey} v${c.from}→v${c.to}`)
+          .join(", ")}). v${v.revision} değişmedi.`,
+      );
+      setReload((n) => n + 1);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy("");
+    }
+  };
   const groups = [...new Set(tests.map((t) => t.id))].map((id) =>
     tests.filter((t) => t.id === id).sort((a, b) => b.revision - a.revision),
   );
@@ -103,8 +133,9 @@ export function PromotedTests({
         <span className="small-tag">{groups.length}</span>
       </div>
       <p className="hint">
-        Yayınlanan sürümler değişmez; suite yeniden dönüştürülünce yeni sürüm
-        oluşur. Hedef origin her çalıştırmada yeniden yetki kontrolünden geçer.
+        Yayınlanan sürümler değişmez; suite yeniden dönüştürülünce ya da
+        güncellenen elementler için “Yeni sürüm oluştur” ile yeni sürüm oluşur.
+        Hedef origin her çalıştırmada yeniden yetki kontrolünden geçer.
       </p>
       {!groups.length ? (
         <p className="hint">
@@ -143,7 +174,26 @@ export function PromotedTests({
                       Origin yetkisiz
                     </span>
                   )}
+                  {v.stale_elements.length > 0 && (
+                    <span
+                      className="badge awaiting_review"
+                      style={{ marginLeft: 8 }}
+                      title={v.stale_elements.map(staleText).join("\n")}
+                    >
+                      güncel olmayan element ({v.stale_elements.length})
+                    </span>
+                  )}
                 </small>
+                {v.stale_elements.length > 0 && (
+                  <button
+                    className="secondary"
+                    disabled={!canEdit || busy === v.id}
+                    title="Güncel onaylı element sürümleriyle yeni test sürümü"
+                    onClick={() => void newVersion(v)}
+                  >
+                    Yeni sürüm oluştur
+                  </button>
+                )}
                 <button
                   className="secondary"
                   disabled={!canEdit || !v.authorized}
@@ -164,12 +214,34 @@ export function PromotedTests({
           </div>
         ))
       )}
+      {message && <p role="status">{message}</p>}
       {error && (
         <p role="alert" className="error">
           {error}
         </p>
       )}
     </section>
+  );
+}
+
+function staleText(s: TestRow["stale_elements"][number]) {
+  if (s.removed) return `${s.elementKey}: v${s.pinnedRevision} → silinmiş`;
+  return `${s.elementKey}: v${s.pinnedRevision} → v${s.currentRevision}${s.approved ? "" : " (onaysız)"}`;
+}
+export type CreatedVersion = {
+  test: { testId: string; revision: number };
+  checksum: string;
+  changed: { elementKey: string; from: number; to: number }[];
+};
+/** Re-pins the test's elements to their current approved revisions (ADR 015). */
+export function createElementUpdateVersion(
+  projectId: string,
+  test: { id: string; revision: number },
+) {
+  return api<CreatedVersion>(
+    `/v1/projects/${projectId}/ai/tests/${test.id}/versions`,
+    "POST",
+    { expectedRevision: test.revision },
   );
 }
 

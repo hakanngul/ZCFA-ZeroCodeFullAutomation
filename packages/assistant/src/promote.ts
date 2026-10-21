@@ -42,6 +42,8 @@ export type PromotedTest = {
   source: { suiteId: string; draftId: string; conversationId: string };
   elements: PromotedElement[];
   scenarios: AiSuite["scenarios"];
+  /** Set on versions created by re-pinning updated elements (ADR 015). */
+  derivedFrom?: { revision: number; reason: "element_update" };
 };
 export type PromotedPlan = {
   schemaVersion: "ai-plan-1.0";
@@ -149,6 +151,35 @@ export function buildPromotedTest(input: {
     source: input.source,
     elements: [...elements.values()],
     scenarios: structuredClone(suite.scenarios),
+  };
+}
+
+/**
+ * New version of a test with its library references re-pinned to the given
+ * (current, approved) revisions. Scenarios, observed elements and source are
+ * copied unchanged; the previous version is never touched.
+ */
+export function repinPromotedTest(
+  test: PromotedTest,
+  revision: number,
+  bindings: PromotionBinding[],
+): PromotedTest {
+  const byId = new Map(bindings.map((b) => [b.elementId, b] as const));
+  return {
+    ...structuredClone(test),
+    revision,
+    derivedFrom: { revision: test.revision, reason: "element_update" },
+    elements: test.elements.map((element) => {
+      const bound = element.elementId ? byId.get(element.elementId) : undefined;
+      if (!element.elementKey || !bound) return structuredClone(element);
+      return {
+        ...structuredClone(element),
+        pageUrl: bound.pageUrl,
+        locator: structuredClone(bound.locator),
+        revision: bound.revision,
+        name: bound.name,
+      };
+    }),
   };
 }
 

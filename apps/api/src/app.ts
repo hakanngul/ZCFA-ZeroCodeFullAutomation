@@ -61,6 +61,7 @@ export async function createApp(store = new Store()) {
       return reply.code(error.status).send({
         code: error.code,
         message: error.message,
+        ...(error.details === undefined ? {} : { details: error.details }),
         requestId: request.id,
       });
     if (error instanceof ZodError)

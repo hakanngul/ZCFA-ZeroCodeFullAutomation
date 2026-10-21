@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../lib/api";
+import { createElementUpdateVersion } from "./promoted-tests";
 
 export type LibraryLocator =
   | {
@@ -224,6 +225,14 @@ export function AiElementEditor({
       className="ai-element-editor"
       aria-label={`${element.elementKey} düzenle`}
     >
+      {suggestions.length > 0 && (
+        <span
+          className="badge awaiting_review ai-element-suggestion-badge"
+          title="Yeniden gözlemde bulunan, henüz eklenmemiş alternatifler"
+        >
+          {suggestions.length} önerilen alternatif
+        </span>
+      )}
       <div className="ai-element-editor-grid">
         <label>
           Ad
@@ -387,6 +396,11 @@ export function AiElementEditor({
         </button>
         <small>Sürüm {base.revision}</small>
       </div>
+      <ElementImpact
+        projectId={projectId}
+        elementId={element.id}
+        revision={base.revision}
+      />
       <details className="ai-element-history">
         <summary>Geçmiş ({history.length})</summary>
         {history.length ? (
@@ -406,5 +420,214 @@ export function AiElementEditor({
         )}
       </details>
     </div>
+  );
+}
+
+type ImpactRow = {
+  testId: string;
+  title: string;
+  testRevision: number;
+  elementKey: string;
+  pinnedRevision: number;
+  currentRevision: number;
+  diff: {
+    primary: { from: LibraryLocator; to: LibraryLocator } | null;
+    alternatives: { added: LibraryLocator[]; removed: LibraryLocator[] };
+    name: { from: string; to: string } | null;
+    snapshotMissing: boolean;
+  };
+  unavailable: { elementKey: string; reason: "removed" | "unapproved" }[];
+};
+type RunState = { id: string; status: string; counts?: string };
+const reasonNames = { removed: "silinmiş", unapproved: "onaysız" };
+const terminal = (status: string) => !["queued", "running"].includes(status);
+
+/**
+ * "Etkilenen testler" (ADR 015): latest permanent test versions that pin an
+ * older revision of this element; a new version is created only on request.
+ */
+function ElementImpact({
+  projectId,
+  elementId,
+  revision,
+}: {
+  projectId: string;
+  elementId: string;
+  revision: number;
+}) {
+  const [rows, setRows] = useState<ImpactRow[]>([]);
+  const [created, setCreated] = useState<Record<string, number>>({});
+  const [runs, setRuns] = useState<Record<string, RunState>>({});
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const [reload, setReload] = useState(0);
+  const root = `/v1/projects/${projectId}/ai`;
+  useEffect(() => {
+    void api<{ tests: ImpactRow[] }>(`${root}/elements/${elementId}/impact`)
+      .then((data) => setRows(data.tests))
+      .catch((failure) => setError(String(failure)));
+  }, [root, elementId, revision, reload]);
+  const pending = Object.entries(runs).filter(([, r]) => !terminal(r.status));
+  const pendingKey = pending.map(([, r]) => r.id).join(",");
+  useEffect(() => {
+    if (!pending.length) return;
+    const timer = setInterval(() => {
+      for (const [testId, run] of pending)
+        void api<{
+          status: string;
+          result: {
+            counts?: { passed: number; failed: number; skipped: number };
+          } | null;
+        }>(`${root}/test-runs/${run.id}`).then((detail) =>
+          setRuns((current) => ({
+            ...current,
+            [testId]: {
+              id: run.id,
+              status: detail.status,
+              counts: detail.result?.counts
+                ? `${detail.result.counts.passed} başarılı · ${detail.result.counts.failed} başarısız · ${detail.result.counts.skipped} atlandı`
+                : undefined,
+            },
+          })),
+        );
+    }, 1500);
+    return () => clearInterval(timer);
+    // pendingKey names exactly the runs in `pending`.
+  }, [root, pendingKey]);
+
+  const createVersion = async (row: ImpactRow) => {
+    setBusy(row.testId);
+    setError("");
+    try {
+      const result = await createElementUpdateVersion(projectId, {
+        id: row.testId,
+        revision: row.testRevision,
+      });
+      setCreated((current) => ({
+        ...current,
+        [row.testId]: result.test.revision,
+      }));
+      setReload((n) => n + 1);
+    } catch (failure) {
+      setError(String(failure));
+    } finally {
+      setBusy("");
+    }
+  };
+  const run = async (testId: string, testRevision: number) => {
+    setBusy(testId);
+    setError("");
+    try {
+      const queued = await api<{ id: string; status: string }>(
+        `${root}/tests/${testId}/runs`,
+        "POST",
+        { revision: testRevision },
+      );
+      setRuns((current) => ({ ...current, [testId]: queued }));
+    } catch (failure) {
+      setError(String(failure));
+    } finally {
+      setBusy("");
+    }
+  };
+  const createdOnly = Object.entries(created).filter(
+    ([testId]) => !rows.some((row) => row.testId === testId),
+  );
+
+  return (
+    <section className="ai-element-impact" aria-label="Etkilenen testler">
+      <strong>Etkilenen testler ({rows.length})</strong>
+      <small>
+        Kalıcı testlerin son sürümleri bu elementin eski bir sürümünü
+        kullanıyorsa burada listelenir. Eski sürümler değişmez; yeni sürüm
+        yalnızca siz oluşturunca yazılır.
+      </small>
+      {rows.length === 0 && createdOnly.length === 0 && (
+        <small>Bu elementin eski sürümünü kullanan kalıcı test yok.</small>
+      )}
+      <ul>
+        {rows.map((row) => (
+          <li key={row.testId}>
+            <div>
+              <b>{row.title}</b> · test v{row.testRevision} ·{" "}
+              <code>{row.elementKey}</code> pinli v{row.pinnedRevision} → güncel
+              v{row.currentRevision}
+            </div>
+            <ul className="ai-element-diff">
+              {row.diff.primary && (
+                <li>
+                  Birincil: <code>{locatorLabel(row.diff.primary.from)}</code> →{" "}
+                  <code>{locatorLabel(row.diff.primary.to)}</code>
+                </li>
+              )}
+              {row.diff.alternatives.added.map((l) => (
+                <li key={`+${locatorLabel(l)}`}>
+                  Alternatif eklendi: <code>{locatorLabel(l)}</code>
+                </li>
+              ))}
+              {row.diff.alternatives.removed.map((l) => (
+                <li key={`-${locatorLabel(l)}`}>
+                  Alternatif kaldırıldı: <code>{locatorLabel(l)}</code>
+                </li>
+              ))}
+              {row.diff.name && (
+                <li>
+                  Ad: {row.diff.name.from} → {row.diff.name.to}
+                </li>
+              )}
+              {!row.diff.primary &&
+                !row.diff.name &&
+                !row.diff.alternatives.added.length &&
+                !row.diff.alternatives.removed.length && (
+                  <li>Locator ve ad aynı (yalnız onay/sayfa değişti).</li>
+                )}
+            </ul>
+            {row.unavailable.length > 0 && (
+              <small className="ai-element-warning">
+                Yeni sürüm için önce onaylayın:{" "}
+                {row.unavailable
+                  .map((u) => `${u.elementKey} (${reasonNames[u.reason]})`)
+                  .join(", ")}
+              </small>
+            )}
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy === row.testId || row.unavailable.length > 0}
+              onClick={() => void createVersion(row)}
+            >
+              Yeni sürüm oluştur
+            </button>
+          </li>
+        ))}
+        {createdOnly.map(([testId, testRevision]) => (
+          <li key={testId}>
+            <span role="status">
+              Yeni sürüm v{testRevision} oluşturuldu; önceki sürüm değişmedi.
+            </span>{" "}
+            <button
+              type="button"
+              className="secondary"
+              disabled={
+                busy === testId ||
+                (!!runs[testId] && !terminal(runs[testId]!.status))
+              }
+              onClick={() => void run(testId, testRevision)}
+            >
+              Yeni sürümü çalıştır
+            </button>
+            {runs[testId] && (
+              <small>
+                {" "}
+                Çalıştırma {runs[testId]!.id.slice(0, 8)}:{" "}
+                {runs[testId]!.status}
+                {runs[testId]!.counts ? ` · ${runs[testId]!.counts}` : ""}
+              </small>
+            )}
+          </li>
+        ))}
+      </ul>
+      {error && <p role="alert">{error}</p>}
+    </section>
   );
 }

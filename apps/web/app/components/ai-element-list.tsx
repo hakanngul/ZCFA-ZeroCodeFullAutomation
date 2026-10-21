@@ -295,6 +295,15 @@ export function AiElementList({ projectId }: { projectId: string }) {
                                   +{element.alternatives.length} alternatif
                                 </small>
                               )}
+                              {(element.suggestedAlternatives?.length ?? 0) >
+                                0 && (
+                                <span
+                                  className="badge awaiting_review"
+                                  title="Yeniden gözlemde bulunan, henüz eklenmemiş alternatifler"
+                                >
+                                  {element.suggestedAlternatives!.length} öneri
+                                </span>
+                              )}
                               {element.fragile && (
                                 <span
                                   className="badge fragile"

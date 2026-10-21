@@ -1,5 +1,34 @@
 # Devam noktası — 19 Ekim 2026
 
+## 21 Ekim 2026 — Element kütüphanesi Faz 3: locator değişikliği etkisi
+
+Plan `wiggly-plotting-teapot` Faz 3 tamamlandı (Faz 4 başlamadı); ADR 015.
+`GET …/ai/elements/:id/impact`: son sürümü bu elementin eski revizyonunu
+pinleyen kalıcı testler (eski sürümler hariç), pinli → güncel revizyon ve
+pinli anlık görüntüye göre birincil/alternatif/ad farkı, yeni sürümü
+engelleyen elementler. `GET …/ai/tests` satırlarına `latest` ve yalnız son
+sürüm için `stale_elements`; Testler'de "güncel olmayan element" rozeti ve
+"Yeni sürüm oluştur". `POST …/ai/tests/:id/versions` (`expectedRevision`):
+güncel onaylı revizyonlarla yeni sürüm (`derivedFrom`), checksum yalnız yeni
+sürüm için; onaysız/silinmiş referans 409 `ELEMENT_UNAVAILABLE` +
+`details.unavailable` listesi, değişiklik yoksa `TEST_UP_TO_DATE`. Migration
+011 `ai_tests`'i `UNIQUE(org_id,suite_id)` olmadan yeniden kurar (satır,
+checksum, trigger ve run referansları korunur); tekrar terfi ilk sürümü
+döner. Element panelinde "Etkilenen testler" + "Yeni sürümü çalıştır"; liste
+ve panelde önerilen alternatif sayısı rozeti. Taslaklar kapsam dışı: onayda
+o anki onaylı revizyon pinlenir (doğrulandı). Testler: etki listesi (son
+sürüm, eski revizyon), rozet bayrağı, yeni sürüm + eski sürüm/checksum
+korunması, onaysız elementte red, 409'lar, org izolasyonu (404), migration 011. Doğrulama: typecheck, format:check, `pnpm test` 42/42, build,
+`test:e2e` 13/13. Gerçek kontrol (`.local/my-data`, önce
+`/tmp/zc-my-data-backup-20261021-faz3.sqlite`; 276 element, 2 test korundu):
+`login.submit`'te `id: login-button` önerisi eklendi ama birincil yapılamadı
+(eski onaysız `home.input` kaydı aynı locator'a sahip, `LOCATOR_IN_USE`);
+bunun yerine önerilen `role=button "Login"` eklenip birincil yapıldı ve
+yeniden onaylandı (v6). Etki listesi SauceDemo giriş testini (v1, pinli v2)
+gösterdi; yeni sürüm v2 (`login.submit@6`) oluştu, v1 checksum'ı aynı;
+v2 çalıştırması 7/7 başarılı. Kanıt: `docs/evidence/elements/impact-list.png`,
+`new-version-run.png`.
+
 ## 21 Ekim 2026 — Element kütüphanesi Faz 2: suite'ler elementleri anahtarla kullanır
 
 Plan `wiggly-plotting-teapot` Faz 2 tamamlandı (Faz 3–4 başlamadı); ADR 014.

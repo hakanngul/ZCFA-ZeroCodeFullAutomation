@@ -133,6 +133,17 @@ onayında kullanılan element revizyonları sabitlenir (`ai_suite_elements`);
 anlık görüntüsü taşır (checksum'a dahil). Taslak ve çalışma adımlarında
 element adı ve anahtarı görünür.
 
+**Locator değişikliği etkisi** (ADR 015): element yeni revizyon alınca
+düzenleme panelindeki **Etkilenen testler** bölümü, son sürümü bu elementin
+eski bir revizyonunu kullanan kalıcı testleri gösterir (test sürümü, pinli →
+güncel revizyon, birincil/alternatif/ad farkı). Testler ekranında bu testler
+"güncel olmayan element" rozeti taşır. **Yeni sürüm oluştur** (insan
+kararıyla, test başına) güncel onaylı revizyonlarla yeni bir test sürümü
+yazar; eski sürüm ve checksum'ı değişmez. Referanslardan biri onaysız ya da
+silinmişse istek liste halinde reddedilir. Yeni sürüm aynı panelden **Yeni
+sürümü çalıştır** ile mevcut çalıştırma hattında koşar. Onaylı elementte
+bekleyen önerilen alternatif sayısı listede ve panelde rozetle görünür.
+
 ## Mimari
 
 ## AI Test Assistant

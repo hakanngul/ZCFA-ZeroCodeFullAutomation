@@ -75,6 +75,7 @@ uygulamayı açtığı anlamına gelmez: deneme canlı yerel demo hedefinde yap�
 | GET        | /v1/projects/:projectId/ai/elements/:id                            | Kütüphane elementi ve değişmez geçmişi                                      |
 | PUT        | /v1/projects/:projectId/ai/elements/:id                            | Ad/anahtar/sayfa/locator/onay (`expectedRevision`, 409)                     |
 | POST       | /v1/projects/:projectId/ai/elements/:id/suggestions/accept         | Önerilen alternatifi ekle (`expectedRevision`, onay korunur)                |
+| GET        | /v1/projects/:projectId/ai/elements/:id/impact                     | Son sürümü eski revizyonu pinleyen kalıcı testler + fark (ADR 015)          |
 | DELETE     | /v1/ai/authorized-origins/:id                                      | Yetkili hedefi kaldır                                                       |
 | GET        | /v1/projects/:projectId/ai/conversations                           | Konuşma geçmişi                                                             |
 | GET        | /v1/projects/:projectId/ai/conversations/:id                       | Mesaj, taslak ve çalışma geçmişi                                            |
@@ -91,6 +92,7 @@ uygulamayı açtığı anlamına gelmez: deneme canlı yerel demo hedefinde yap�
 | POST       | /v1/projects/:projectId/ai/suites/:id/promote                      | Onaylı suite → değişmez, sürümlü kalıcı test (201 yeni / 200 mevcut)        |
 | GET        | /v1/projects/:projectId/ai/tests                                   | Kalıcı AI test sürümleri (origin yetkisi dahil)                             |
 | GET        | /v1/projects/:projectId/ai/tests/:id/versions/:revision            | Sürüm tanımı + checksum                                                     |
+| POST       | /v1/projects/:projectId/ai/tests/:id/versions                      | Güncel onaylı element revizyonlarıyla yeni sürüm (`expectedRevision`, 409)  |
 | POST       | /v1/projects/:projectId/ai/tests/:id/runs                          | Sürümü plan snapshot + checksum ile kuyruğa al                              |
 | GET        | /v1/projects/:projectId/ai/test-runs                               | Kalıcı test çalıştırmaları                                                  |
 | GET        | /v1/projects/:projectId/ai/test-runs/:id                           | Plan, durum, senaryo sonuçları                                              |

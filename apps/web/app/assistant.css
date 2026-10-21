@@ -591,3 +591,35 @@
   padding-top: 8px;
   border-top: 1px dashed var(--line);
 }
+.ai-element-suggestion-badge {
+  justify-self: start;
+}
+.ai-element-impact {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.ai-element-impact > ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+.ai-element-impact > ul > li {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 13px;
+}
+.ai-element-impact .ai-element-diff {
+  margin: 0;
+  padding-left: 18px;
+}
+.ai-element-impact .ai-element-warning {
+  color: #8a4b00;
+}
