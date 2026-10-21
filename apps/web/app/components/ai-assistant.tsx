@@ -4,6 +4,7 @@ import { Bot, Plus, Send, Play, Check, Trash2, RefreshCw } from "lucide-react";
 import { api, ApiError } from "../lib/api";
 import type { AiSuite } from "../../../../packages/assistant/src/spec";
 import { TestVariables } from "./test-variables";
+import { QualityFindings, type Findings } from "./quality-findings";
 import "../assistant.css";
 
 type Provider = {
@@ -103,6 +104,7 @@ type Run = {
         status: string;
         code?: string;
         message?: string;
+        findings?: Findings;
         screenshot?: { filename: string; sha256: string };
       }[];
       screenshot?: { filename: string; sha256: string };
@@ -517,7 +519,7 @@ export function AiAssistant({
                       </strong>
                       {r.code && <p>Hata: {r.code}</p>}
                       {r.steps.map((step, n) => (
-                        <p key={n}>
+                        <div key={n} className="ai-step">
                           {step.kind}: {step.status} {step.code ?? ""}{" "}
                           {step.message ? `— ${step.message} ` : ""}
                           {step.screenshot && (
@@ -529,7 +531,8 @@ export function AiAssistant({
                               Adım görüntüsü
                             </a>
                           )}
-                        </p>
+                          <QualityFindings findings={step.findings} />
+                        </div>
                       ))}
                       {r.screenshot && (
                         <a

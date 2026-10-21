@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowUpRight, FileCheck2, LoaderCircle, Play } from "lucide-react";
 import { api } from "../lib/api";
+import { QualityFindings, type Findings } from "./quality-findings";
 
 type TestRow = {
   id: string;
@@ -38,6 +39,7 @@ type RunDetail = RunRow & {
         status: string;
         code?: string;
         message?: string;
+        findings?: Findings;
       }[];
       screenshot?: { sha256: string };
     }[];
@@ -297,6 +299,9 @@ export function PromotedRuns({
                   )
                   .join(" → ")}
               </small>
+              {r.steps.map((s, n) => (
+                <QualityFindings key={n} findings={s.findings} />
+              ))}
               {r.screenshot && (
                 <a
                   href={`${root}/${detail.id}/screenshots/${i}`}

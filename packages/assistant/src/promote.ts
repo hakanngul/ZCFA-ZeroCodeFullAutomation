@@ -79,6 +79,7 @@ export function buildPromotedTest(input: {
           throw new DomainError("TARGET_BLOCKED", "URL hedef dışı.");
         continue;
       }
+      if (!("locator" in action)) continue;
       const key = locatorKey(action.locator);
       const element = observed.get(key);
       if (!element)

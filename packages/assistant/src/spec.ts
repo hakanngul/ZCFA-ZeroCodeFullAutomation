@@ -26,6 +26,20 @@ export const aiActionSchema = z.discriminatedUnion("kind", [
       expected: z.url().max(500),
     })
     .strict(),
+  // Page-quality checks: run on the current page, no locator needed.
+  z
+    .object({
+      kind: z.literal("assertNoConsoleErrors"),
+      ignore: z.array(z.string().trim().min(1).max(200)).max(5).optional(),
+    })
+    .strict(),
+  z.object({ kind: z.literal("assertNoBrokenLinks") }).strict(),
+  z
+    .object({
+      kind: z.literal("assertAccessible"),
+      impact: z.enum(["critical", "serious"]).optional(),
+    })
+    .strict(),
 ]);
 export const aiSuiteSchema = z
   .object({

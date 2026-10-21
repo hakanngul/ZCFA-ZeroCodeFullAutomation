@@ -92,8 +92,10 @@ uygulamayı açtığı anlamına gelmez: deneme canlı yerel demo hedefinde yap�
 | GET/POST   | /v1/projects/:projectId/test-variables                             | Test verileri; gizli değer yanıtta `null`                            |
 | PUT/DELETE | /v1/projects/:projectId/test-variables/:id                         | Güncelle (boş değer = koru) / sil                                    |
 
-`aiSuiteSchema` yalnız `fill`, `click`, `assertVisible`, `assertText` ve
-`assertUrl` adımlarını kabul eder. Her senaryoda açık assertion zorunludur.
+`aiSuiteSchema` yalnız `fill`, `click`, `assertVisible`, `assertText`,
+`assertUrl` ve locator'sız sayfa kalite adımlarını (`assertNoConsoleErrors`
+`{ignore?}`, `assertNoBrokenLinks`, `assertAccessible` `{impact?}`) kabul eder;
+bunların özet bulguları adım sonucunda `findings` olarak döner. Her senaryoda açık assertion zorunludur.
 Analizden dönen locator'lar incelenen DOM'da gözlenmiş olmalı; kullanıcı da
 onaydan önce yalnız bu locator'ları saklayabilir. En fazla 4 senaryo ve her
 senaryoda 8 adım vardır. Her senaryo 30 saniye ile sınırlıdır; otomatik retry yok.

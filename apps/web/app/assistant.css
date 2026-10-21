@@ -416,3 +416,6 @@
   color: var(--green);
   margin-left: 8px;
 }
+.ai-step {
+  margin: 6px 0;
+}

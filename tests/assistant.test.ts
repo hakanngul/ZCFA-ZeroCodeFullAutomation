@@ -9,6 +9,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { Store } from "../packages/storage/src/index";
 import {
   authorizedTarget,
+  executeSuite,
   isFragileLocator,
   locatorKey,
   observePage,
@@ -18,6 +19,7 @@ import { createApp } from "../apps/api/src/app";
 import { demoProject } from "../packages/domain/src/index";
 import { admin } from "./support";
 import {
+  buildPromotedTest,
   compilePromoted,
   evidencedPass,
   verifyPlan,
@@ -28,6 +30,7 @@ import {
   resolvePlaceholders,
   variablesForModel,
 } from "../packages/assistant/src/variables";
+import { aiSuiteSchema } from "../packages/assistant/src/spec";
 
 async function until<T>(
   probe: () => Promise<T | null | false | undefined>,
@@ -1519,6 +1522,166 @@ test(
       else process.env.ZC_AI_ALLOW_LOCAL_PROVIDER = previousAllow;
       if (previousKey === undefined) delete process.env.ZC_AI_ENCRYPTION_KEY;
       else process.env.ZC_AI_ENCRYPTION_KEY = previousKey;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "Page-quality assertions report console, link and accessibility findings",
+  { timeout: 120000 },
+  async () => {
+    const dir = mkdtempSync(join(tmpdir(), "zc-quality-"));
+    const fixture = spawn(
+      process.execPath,
+      ["--import", "tsx", "tests/fixtures/server.ts"],
+      { detached: true, stdio: "ignore" },
+    );
+    const browser = await launchBrowser();
+    try {
+      await until(
+        async () =>
+          await fetch("http://127.0.0.1:4100/health").then(
+            (r) => r.ok,
+            () => false,
+          ),
+        10000,
+      );
+      const scenario = (
+        page: string,
+        actions: unknown[],
+        category = "positive",
+      ) => ({
+        title: `Quality ${page}`,
+        category,
+        actions,
+      });
+      const suite = (page: string, actions: unknown[]) =>
+        aiSuiteSchema.parse({
+          title: `Quality ${page}`,
+          targetUrl: `http://127.0.0.1:4100/quality/${page}`,
+          scenarios: [scenario(page, actions)],
+        });
+      const run = async (page: string, actions: unknown[]) =>
+        (
+          await executeSuite(
+            browser,
+            suite(page, actions),
+            join(dir, page + actions.length),
+          )
+        ).results[0]!;
+      const checks = [
+        { kind: "assertNoConsoleErrors" },
+        { kind: "assertNoBrokenLinks" },
+        { kind: "assertAccessible" },
+      ];
+
+      const clean = await run("clean", checks);
+      assert.equal(clean.status, "passed");
+      assert.equal(clean.steps.length, 3);
+      for (const step of clean.steps) {
+        assert.equal(step.status, "passed");
+        assert.ok(step.screenshot?.sha256);
+        assert.equal(step.findings?.items.length, 0);
+      }
+      // Self link (hash stripped) and /health; external link is skipped.
+      assert.equal(clean.steps[1]!.findings!.checked, 2);
+
+      const consoleRun = await run("console", [checks[0]]);
+      assert.equal(consoleRun.status, "failed");
+      assert.equal(consoleRun.steps[0]!.code, "ASSERTION_FAILED");
+      const texts = consoleRun.steps[0]!.findings!.items.map((i) => i.text);
+      assert.ok(texts.some((t) => t.includes("fixture console failure")));
+      assert.ok(texts.some((t) => t.includes("fixture uncaught")));
+      assert.ok(consoleRun.steps[0]!.screenshot?.sha256);
+      const ignored = await run("console", [
+        { kind: "assertNoConsoleErrors", ignore: ["fixture"] },
+      ]);
+      assert.equal(ignored.status, "passed");
+      assert.equal(ignored.steps[0]!.findings!.checked, 2);
+
+      const links = await run("links", [checks[1]]);
+      assert.equal(links.status, "failed");
+      assert.deepEqual(links.steps[0]!.findings!.items, [
+        {
+          target: "http://127.0.0.1:4100/quality/missing",
+          status: 404,
+          text: "HTTP 404",
+        },
+      ]);
+
+      const a11y = await run("a11y", [checks[2]]);
+      assert.equal(a11y.status, "failed");
+      const ids = a11y.steps[0]!.findings!.items.map((i) => i.id);
+      assert.ok(ids.includes("image-alt"));
+      assert.ok(ids.includes("label"));
+      const item = a11y.steps[0]!.findings!.items[0]!;
+      assert.ok(item.impact && item.target && item.text);
+      // Promotion accepts locator-free checks; a failed check never PASSes.
+      const promoted = buildPromotedTest({
+        testId: randomUUID(),
+        revision: 1,
+        orgId: admin.orgId,
+        projectId: demoProject,
+        suite: suite("clean", checks),
+        inspection: { pages: [] },
+        source: {
+          suiteId: randomUUID(),
+          draftId: randomUUID(),
+          conversationId: randomUUID(),
+        },
+      });
+      assert.equal(promoted.elements.length, 0);
+      const plan = compilePromoted(promoted);
+      assert.equal(
+        evidencedPass(plan, { status: "passed", results: [clean] }),
+        true,
+      );
+      assert.equal(
+        evidencedPass(plan, {
+          status: "passed",
+          results: [
+            {
+              ...clean,
+              steps: clean.steps.map((s, i) =>
+                i === 2 ? { ...s, status: "failed" } : s,
+              ),
+            },
+          ],
+        }),
+        false,
+      );
+      // Schema limits: at most 5 ignore entries, no unknown impact.
+      assert.equal(
+        aiSuiteSchema.safeParse({
+          title: "Too many",
+          targetUrl: "http://127.0.0.1:4100/quality/clean",
+          scenarios: [
+            scenario("clean", [
+              {
+                kind: "assertNoConsoleErrors",
+                ignore: ["a", "b", "c", "d", "e", "f"],
+              },
+            ]),
+          ],
+        }).success,
+        false,
+      );
+      assert.equal(
+        aiSuiteSchema.safeParse({
+          title: "Bad impact",
+          targetUrl: "http://127.0.0.1:4100/quality/clean",
+          scenarios: [
+            scenario("clean", [{ kind: "assertAccessible", impact: "minor" }]),
+          ],
+        }).success,
+        false,
+      );
+    } finally {
+      await browser.close();
+      try {
+        if (fixture.pid) process.kill(-fixture.pid, "SIGTERM");
+      } catch {}
       rmSync(dir, { recursive: true, force: true });
     }
   },

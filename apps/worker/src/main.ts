@@ -289,7 +289,12 @@ while (!stopping) {
                         .map((r) => ({
                           title: r.title,
                           code: r.code,
-                          steps: r.steps,
+                          // Only step kinds and codes: findings stay local.
+                          steps: r.steps.map((s) => ({
+                            kind: s.kind,
+                            status: s.status,
+                            code: s.code,
+                          })),
                         })),
                       observedElements: normalizeInspection(
                         JSON.parse(original!.inspection as string),

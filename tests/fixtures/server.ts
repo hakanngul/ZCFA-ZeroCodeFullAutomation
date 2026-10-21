@@ -24,6 +24,33 @@ app.get("/dashboard", async (req, reply) => {
 app.get("/dashboard-preview", async (_, reply) =>
   reply.type("text/html").send(dashboard("healthy", true)),
 );
+// Page-quality fixtures (console, links, accessibility); Demo Bank is unchanged.
+const qualityPage = (title: string, body: string) =>
+  `<!doctype html><html lang="en"><meta charset="utf-8"><title>${title}</title><main><h1>${title}</h1>${body}</main></html>`;
+const qualityPages: Record<string, string> = {
+  clean: qualityPage(
+    "Quality clean",
+    '<a href="/quality/clean#top">Self</a> <a href="/health">Health</a> <a href="https://example.com/">External</a><label for="q">Search</label><input id="q">',
+  ),
+  console: qualityPage(
+    "Quality console",
+    "<p>Console</p><script>console.error('fixture console failure');setTimeout(()=>{throw new Error('fixture uncaught')},0)</script>",
+  ),
+  links: qualityPage(
+    "Quality links",
+    '<a href="/quality/clean">Clean</a> <a href="/quality/missing?token=abc">Missing</a>',
+  ),
+  a11y: qualityPage(
+    "Quality a11y",
+    '<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw="><input type="text">',
+  ),
+};
+app.get("/quality/:page", async (req, reply) => {
+  const html = qualityPages[(req.params as { page: string }).page];
+  return html
+    ? reply.type("text/html").send(html)
+    : reply.code(404).send("not found");
+});
 function dashboard(variant: string, preview: boolean) {
   return `<!doctype html><html lang="tr"><meta charset="utf-8"><title>Demo Bank · Dashboard</title>${style}<main><small>${preview ? "KEŞİF İÇİN ÖĞRETİM SAYFASI" : "DEMO BANK"}</small><h1 data-testid="dashboard-heading" data-semantic="dashboard.heading" aria-label="Dashboard" ${variant === "broken" ? "hidden" : ""}>Dashboard</h1><p>Kullanılabilir bakiye</p><strong data-testid="dashboard-balance" data-semantic="dashboard.balance" aria-label="Bakiye">${variant === "broken" ? "0,00 TL" : "1.250,00 TL"}</strong><p>Gerçek hesap veya para içermez.</p></main>${preview ? "" : "<script>if(sessionStorage.getItem('fixture-auth')!=='yes')location.href='/login'</script>"}</html>`;
 }

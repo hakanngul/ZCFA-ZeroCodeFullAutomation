@@ -205,6 +205,23 @@ worker'da çalıştırma anında çözülür. Tanımsız referans adımı
 değiştirmek yayımlanmış test sürümlerini değiştirmez (sürüm referansı
 saklar, checksum aynı kalır); yeni değer sonraki çalıştırmada kullanılır.
 
+**Sayfa kalite kontrolleri**: AI suite'leri ve kalıcı testler bulunduğu sayfada
+üç ek doğrulama kullanabilir. `assertNoConsoleErrors` senaryo başından beri
+konsol hatası/yakalanmamış sayfa hatası olmadığını kontrol eder (isteğe bağlı
+en fazla 5 `ignore` alt metni; worker'ın engellediği dış istekler
+(`ERR_BLOCKED_BY_CLIENT`) sayılmaz). `assertNoBrokenLinks` sayfadaki en fazla
+30 aynı-origin `<a href>` bağlantısını tarayıcı context'inin request API'siyle
+HEAD (gerekirse GET, yönlendirme izlenmez) ile yoklar; ≥400 veya ağ hatası
+kırık sayılır. `assertAccessible` paketle gelen axe-core'u (4.14.0, MPL-2.0)
+sayfanın içinde yerel çalıştırır (WCAG 2.0/2.1 A/AA kuralları; `impact`
+eşiği `critical|serious`, varsayılan `serious`); sayfa içeriği hiçbir yere
+gönderilmez. Kanıt JSON'u yalnız özet bulguları saklar (mesaj ≤300 karakter,
+URL'ler query'siz, en fazla 10 bulgu: kural, etki, hedef seçici, yardım
+metni); hata açıklaması için provider'a yalnız adım türü/kodu gider. Kontrol
+gerçekten çalışmazsa adım `CHECK_NOT_RUN`/`ACTION_FAILED` ile başarısız olur,
+asla PASS sayılmaz. Model bu kontrolleri yalnız istek açıkça kalite,
+erişilebilirlik, bağlantı veya konsol kontrolü istediğinde ekler.
+
 ## Mimari
 
 - `apps/web`: Next.js Türkçe çalışma alanı; business / flow / technical projeksiyonları.

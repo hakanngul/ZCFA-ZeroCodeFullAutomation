@@ -1,5 +1,31 @@
 # Devam noktası — 19 Ekim 2026
 
+## 21 Ekim 2026 — Sayfa kalite doğrulamaları
+
+AI suite/kalıcı test şemasına üç locator'sız doğrulama eklendi:
+`assertNoConsoleErrors` (`ignore` ≤5), `assertNoBrokenLinks` (≤30 aynı-origin
+bağlantı, HEAD→GET, yönlendirme izlenmez) ve `assertAccessible` (`impact`
+`critical|serious`, varsayılan `serious`). Erişilebilirlik için yeni bağımlılık
+`axe-core@4.14.0` (MPL-2.0, exact; `pnpm audit --prod` temiz); sayfa içinde
+yerel çalışıyor, içerik dışarı gitmiyor. Bulgular adımda `findings` özeti olarak
+saklanıyor (≤10 madde, mesaj ≤300 karakter, URL query'siz, gizli değerler
+redakte); UI'da adım altında listeleniyor. Kontrol çalışmazsa adım başarısız
+(`CHECK_NOT_RUN`); worker'ın hata açıklaması isteği artık yalnız adım
+türü/durum/kodu gönderiyor. generateSuite prompt'u bu kontrolleri yalnız istek
+açıkça istediğinde ekletiyor. Kalıcı teste dönüştürme locator'sız adımları
+kabul ediyor. Fixture'a `/quality/{clean,console,links,a11y}` sayfaları
+eklendi (Demo Bank değişmedi); yeni unit test pozitif/negatif durumları ve
+`evidencedPass`'i kapsıyor. Gerçek doğrulama (`.local/my-data`, Evren
+`deepseek-v4.1-flash`, SauceDemo, `{{SAUCE_USER}}`/`{{SAUCE_PASS}}`): model
+login → assertUrl/assertText/assertVisible + `assertAccessible` +
+`assertNoConsoleErrors` içeren 8 adımlı senaryo üretti; onaylanıp çalıştırıldı:
+1 başarılı · 0 başarısız. SauceDemo inventory'de WCAG A/AA ihlali bulunmadı
+(bağımsız axe çalıştırmasıyla teyit: 27 kural geçti; yalnız WCAG dışı
+`page-has-heading-one`/moderate), konsol hatası yok. Kanıt:
+`docs/evidence/assistant/quality-checks-run.png`. Sınır: otomatik tarama tüm
+erişilebilirlik sorunlarını yakalamaz; bağlantı kontrolü yalnız mevcut sayfa ve
+aynı origin; yönlendirmeler (3xx) sağlam sayılıyor.
+
 ## 21 Ekim 2026 — Proje test verileri ({{KEY}})
 
 Ayarlar → **Test verileri** eklendi: proje başına anahtar/değer, isteğe bağlı

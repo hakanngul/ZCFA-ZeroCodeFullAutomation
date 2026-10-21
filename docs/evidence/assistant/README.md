@@ -57,3 +57,12 @@ Chrome'da çekildi.
   `{{SAUCE_PASS}}` gizli (`••••••`), kapsam `https://www.saucedemo.com`.
 - `test-data-run.png`: literal kimlik bilgisi içermeyen prompt, `{{KEY}}` ile
   keşif yolu ve suite çalıştırması (1 başarılı · 0 başarısız).
+
+## Sayfa kalite doğrulamaları (21 Ekim 2026)
+
+Gerçek `.local/my-data`, `pnpm dev`, Evren provider ve SauceDemo ile headless
+Chrome'da çekildi.
+
+- `quality-checks-run.png`: `{{SAUCE_USER}}`/`{{SAUCE_PASS}}` ile giriş,
+  inventory'de `assertAccessible` ve `assertNoConsoleErrors` dahil 8 adım
+  (1 başarılı · 0 başarısız; ihlal/konsol hatası bulunmadı).
