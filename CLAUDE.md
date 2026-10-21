@@ -55,5 +55,6 @@ Testler: `tests/support.ts` ortak fixture/model yardımcıları; `tests/fixtures
 - Önce `README.md` ve `docs/PROGRESS.md`, sonra gerçek Git durumunu oku. Mevcut checkout'ta çalış; istenmedikçe worktree açma.
 - Her tamamlanan iş için ilgili doğrulamaları çalıştır, commit et ve `origin/main`'e push et (tekrar onay isteme); uzak commit'i doğrula, sonucu bildir. Push engellenirse yerel commit'i koru, engeli açıkla, force-push yapma.
 - Her artımda `docs/PROGRESS.md` devam notunu güncelle (en yeni giriş üstte, Türkçe). Arayüz değişikliklerinde gerçek tarayıcı görüntülerini `docs/evidence/` altına koy.
+- Tarayıcıları her zaman headless çalıştır (testler, ekran görüntüsü, manuel doğrulama dahil); görünür pencere açma.
 - Bağlam/token sınırına yaklaşırken güvenli noktada durup devam notu bırak.
 - Ürün invariants'ı: `docs/product/09-AGENT-HANDOFF.md`; kararlar: `docs/decisions/`.

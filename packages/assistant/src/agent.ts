@@ -141,12 +141,34 @@ export function normalizeInspection(raw: unknown) {
 }
 async function observePage(page: Page): Promise<ObservedPage> {
   const elements = await page
-    .locator("input,button,a,select,textarea,[role],[data-testid]")
+    .locator("input,button,a,select,textarea,[role],[data-testid],[data-test]")
     .evaluateAll((nodes) =>
       nodes.slice(0, 60).map((node) => {
         const element = node as HTMLElement;
         const testId = element.getAttribute("data-testid"),
+          dataTest = element.getAttribute("data-test"),
           id = element.id;
+        // Fallback CSS path anchored at the nearest id so it stays page-unique.
+        const parts: string[] = [];
+        for (
+          let current: Element | null = element;
+          current && current !== document.body;
+          current = current.parentElement
+        ) {
+          if (current !== element && current.id) {
+            parts.unshift(`#${CSS.escape(current.id)}`);
+            break;
+          }
+          const tag = current.tagName;
+          parts.unshift(
+            `${tag.toLowerCase()}:nth-of-type(${
+              Array.from(current.parentElement?.children ?? [])
+                .filter((sibling) => sibling.tagName === tag)
+                .indexOf(current) + 1
+            })`,
+          );
+        }
+        if (!parts[0]?.startsWith("#")) parts.unshift("body");
         return {
           tag: element.tagName.toLowerCase(),
           text: (
@@ -163,14 +185,15 @@ async function observePage(page: Page): Promise<ObservedPage> {
             ? { kind: "testId", value: testId }
             : id
               ? { kind: "id", value: id }
-              : {
-                  kind: "css",
-                  value: `${element.tagName.toLowerCase()}:nth-of-type(${
-                    Array.from(element.parentElement?.children ?? [])
-                      .filter((sibling) => sibling.tagName === element.tagName)
-                      .indexOf(element) + 1
-                  })`,
-                },
+              : dataTest &&
+                  document.querySelectorAll(
+                    `[data-test="${CSS.escape(dataTest)}"]`,
+                  ).length === 1
+                ? {
+                    kind: "css",
+                    value: `[data-test="${CSS.escape(dataTest)}"]`,
+                  }
+                : { kind: "css", value: parts.join(" > ") },
         };
       }),
     );
@@ -189,6 +212,17 @@ async function settle(page: Page) {
   await page
     .waitForLoadState("networkidle", { timeout: 2000 })
     .catch(() => undefined);
+  // SPA routes can change the URL before the new view renders.
+  let last = -1;
+  for (let i = 0; i < 8; i++) {
+    const count = await page
+      .locator("body *")
+      .count()
+      .catch(() => -1);
+    if (count === last) break;
+    last = count;
+    await page.waitForTimeout(250);
+  }
 }
 function pageKey(raw: string) {
   const url = new URL(raw);
@@ -245,8 +279,22 @@ export async function exploreTarget(
       const index = result.pages.findIndex(
         (p) => pageKey(p.url) === pageKey(observed.url),
       );
-      if (index >= 0) result.pages[index] = observed;
-      else if (result.pages.length < limits.pages) result.pages.push(observed);
+      if (index >= 0) {
+        // Keep locators seen earlier on this URL (e.g. a clicked button).
+        const seen = new Set(
+          observed.elements.map((e) => JSON.stringify(e.locator)),
+        );
+        result.pages[index] = {
+          ...observed,
+          elements: [
+            ...observed.elements,
+            ...result.pages[index]!.elements.filter(
+              (e) => !seen.has(JSON.stringify(e.locator)),
+            ),
+          ],
+        };
+      } else if (result.pages.length < limits.pages)
+        result.pages.push(observed);
       else return false;
       return true;
     };

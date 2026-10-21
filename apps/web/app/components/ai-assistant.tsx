@@ -689,7 +689,7 @@ export function AiAssistant({
                 <input
                   type="number"
                   min={1000}
-                  max={30000}
+                  max={120000}
                   value={form.timeoutMs}
                   onChange={(e) =>
                     setForm({ ...form, timeoutMs: Number(e.target.value) })

@@ -34,3 +34,16 @@ Ekran görüntüleri `test-results/assistant/` kaynaklarından kopyalandı.
 | settings.png    | `3f51c3d671ad711e834342ca7ffe6f5b77af6be9efc4b6ad73c8e64602932e02` |
 | suite.png       | `20fb01865985eb907f11d1e04f9477ce6e728c23a9831ee6da5c18f83a8056ac` |
 | tests-list.png  | `9ccea30953281d5e6639bb0de795deccc4ea8b4d8f2cfdc09e6b4b75b33d0835` |
+
+## 21 Ekim 2026 — Gerçek Evren provider + SauceDemo
+
+Geliştirme sunucusu (`pnpm dev`, `.local/my-data`), gerçek Evren provider
+(`deepseek-v4.1-flash`) ve gerçek `https://www.saucedemo.com` ile headless
+Chrome'da çekildi. Anahtar yalnız Ayarlar API'si üzerinden girildi; ekranlarda
+görünmez. Keşif 3 sayfa / 5 adım (login → inventory → cart), suite 3 senaryo,
+çalıştırma 3 başarılı · 0 başarısız · 0 atlandı.
+
+- `saucedemo-chat.png`: prompt, keşif özeti, taslak kartı ve adım bazlı PASS.
+- `saucedemo-draft-card.png`: incelenen 3 sayfa ve senaryo listesi.
+- `saucedemo-run-result.png`: suite çalışması ve her adımın durumu.
+- `saucedemo-full.png`: tam sayfa görünümü.

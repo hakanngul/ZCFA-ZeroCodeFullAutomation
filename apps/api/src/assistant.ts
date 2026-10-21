@@ -44,7 +44,7 @@ const providerInput = z
     baseUrl: z.url().max(500),
     apiKey: z.string().max(500).optional(),
     model: z.string().trim().min(1).max(120),
-    timeoutMs: z.number().int().min(1000).max(30000),
+    timeoutMs: z.number().int().min(1000).max(120000),
   })
   .strict();
 function providerUrl(raw: string) {
@@ -218,8 +218,12 @@ export function registerAssistant(
       model: input.model,
       max_tokens: 4,
       messages: [{ role: "user", content: "Reply OK" }],
-    })) as { choices?: { message?: { content?: string } }[] };
-    if (!completion.choices?.[0]?.message?.content)
+    })) as {
+      choices?: { message?: { content?: string; reasoning?: string } }[];
+    };
+    // Reasoning models may spend the tiny budget on `reasoning` only.
+    const message = completion.choices?.[0]?.message;
+    if (!message?.content && !message?.reasoning)
       throw new DomainError(
         "PROVIDER_FORMAT",
         "Provider geçerli sohbet yanıtı döndürmedi.",

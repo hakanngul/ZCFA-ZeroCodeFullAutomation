@@ -1,5 +1,26 @@
 # Devam noktası — 19 Ekim 2026
 
+## 21 Ekim 2026 — Evren + SauceDemo gerçek uçtan uca doğrulama
+
+Gerçek Evren provider (`deepseek-v4.1-flash`) ve `https://www.saucedemo.com`
+ile `pnpm dev` + headless Chrome (`ZC_CHROMIUM_PATH`) üzerinde tam akış
+doğrulandı: keşif 3 sayfa / 5 adım (login → inventory → backpack sepete →
+cart), 3 senaryoluk taslak onaylandı, çalıştırma 3 başarılı · 0 başarısız ·
+0 atlandı. Bulunan ve düzeltilen hatalar: (1) bağlantı testi `max_tokens: 4`
+ile reasoning modellerinde `content` boş döndüğü için `PROVIDER_FORMAT`
+veriyordu; artık `reasoning` alanı da geçerli yanıt sayılıyor. (2) Gözlemde
+`tag:nth-of-type(n)` CSS sayfada tekil değildi (sepet linki keşifte
+`STEP_FAILED`); artık sayfada tekilse `[data-test=...]`, değilse en yakın id'li
+ataya bağlı CSS yolu kullanılıyor. (3) SPA geçişinde URL değişip DOM henüz
+çizilmemişken gözlem yapılıyordu; `settle` DOM öğe sayısı sabitlenene kadar
+(en fazla ~2 sn) bekliyor. (4) Aynı URL yeniden gözlenince önceki locator'lar
+siliniyordu (tıklanan "add to cart" düğmesi kayboluyordu); artık birleştiriliyor.
+(5) Reasoning modelleriyle suite üretimi 30 sn'de zaman aşımına uğruyordu;
+provider timeout üst sınırı 120 sn'ye çıkarıldı (kullanılan: 90 sn). Kanıtlar:
+`docs/evidence/assistant/saucedemo-*.png`. Sınır: tek model ve tek akış
+denendi; job lease 180 sn olduğundan uzun keşif + iki üretim denemesi bu süreyi
+aşabilir.
+
 ## 21 Ekim 2026 — AI planlayıcıya çok sayfalı keşif
 
 `inspect` yerine `exploreTarget` geldi: worker hedef sayfayı gözler, modelden
