@@ -5,7 +5,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { Store } from "../packages/storage/src/index";
 import {
   authorizedTarget,
@@ -59,6 +59,9 @@ test(
         loginStep("login-email", { value: "invented@example.test" }),
       ],
       "loop-model": Array.from({ length: 20 }, () => loginStep("login-email")),
+      // Filling a button cannot be applied in Chromium: step_failed.
+      "fail-model": [loginStep("login-submit", { value: "qa@example.test" })],
+      "ghost-model": [loginStep("not-on-page")],
     };
     const dashboardSuite = (locator: string) => ({
       title: "Demo giriş ve dashboard suite",
@@ -369,6 +372,28 @@ test(
         "negative",
       );
       assert.equal(seenModels.filter((m) => m === "test-model").length, 3);
+      // Exploration and suite generation run as two separate leased jobs.
+      const draftJobs = store.db
+        .prepare(
+          "SELECT kind,status,payload FROM jobs WHERE id=? OR json_extract(payload,'$.draftId')=? ORDER BY created_at",
+        )
+        .all(queued.body.draftId, queued.body.draftId) as {
+        kind: string;
+        status: string;
+        payload: string;
+      }[];
+      assert.deepEqual(
+        draftJobs.map((j) => [j.kind, j.status]),
+        [
+          ["ai_analysis", "done"],
+          ["ai_generate", "done"],
+        ],
+      );
+      assert.equal(
+        JSON.parse(draftJobs[1]!.payload).prompt,
+        "Giriş sayfasında yanlış bilgi senaryosu oluştur",
+      );
+      assert.equal(detail.drafts[0].inspection.stopped.reason, "done");
       const captured = await call(
         "GET",
         `/v1/projects/${demoProject}/ai/elements`,
@@ -459,12 +484,51 @@ test(
       });
       assert.equal(stepScreenshot.statusCode, 200);
       assert.equal(stepScreenshot.headers["content-type"], "image/png");
+      const generatedBefore = seenModels.length;
       const revision = await call(
         "POST",
         `/v1/projects/${demoProject}/ai/suites/${suite.body.id}/revise`,
-        {},
+        { instruction: "Hata mesajı doğrulamasını koru" },
       );
-      assert.equal(revision.status, 201);
+      assert.equal(revision.status, 202);
+      assert.equal(revision.body.status, "explored");
+      // Revise skips exploration and only enqueues ai_generate.
+      const revisionJobs = store.db
+        .prepare(
+          "SELECT kind,payload FROM jobs WHERE id=? OR json_extract(payload,'$.draftId')=?",
+        )
+        .all(revision.body.draftId, revision.body.draftId) as {
+        kind: string;
+        payload: string;
+      }[];
+      assert.deepEqual(
+        revisionJobs.map((j) => j.kind),
+        ["ai_generate"],
+      );
+      const revisionPayload = JSON.parse(revisionJobs[0]!.payload);
+      assert.equal(
+        revisionPayload.prompt,
+        "Giriş sayfasında yanlış bilgi senaryosu oluştur",
+      );
+      assert.equal(
+        revisionPayload.revision.instruction,
+        "Hata mesajı doğrulamasını koru",
+      );
+      const revisedDraft = await until(async () => {
+        const response = await call("GET", route);
+        const draft = response.body.drafts.find(
+          (d: { id: string }) => d.id === revision.body.draftId,
+        );
+        return draft?.status === "ready" || draft?.status === "failed"
+          ? draft
+          : null;
+      });
+      assert.equal(revisedDraft.status, "ready");
+      assert.equal(seenModels.length, generatedBefore + 1);
+      assert.equal(
+        revisedDraft.inspection.elements.length,
+        detail.drafts[0].inspection.elements.length,
+      );
       const wrong = structuredClone(detail.drafts[0].definition);
       wrong.scenarios[0].actions[3].expected = "Yanlış beklenti";
       const revised = await call(
@@ -555,6 +619,16 @@ test(
       assert.equal(explored.draft.status, "ready");
       assert.equal(explored.draft.inspection.pages.length, 2);
       assert.equal(explored.draft.inspection.path.length, 3);
+      assert.equal(explored.draft.inspection.stopped.reason, "done");
+      assert.equal(explored.draft.inspection.path[1].secret, true);
+      assert.equal(explored.draft.inspection.path[1].value, "••••••");
+      assert.equal(explored.draft.inspection.path[0].value, "qa@example.test");
+      assert.equal(
+        JSON.stringify(explored.draft.inspection).includes(
+          "local-fixture-only",
+        ),
+        false,
+      );
       assert.equal(
         explored.draft.inspection.pages[1].url,
         "http://127.0.0.1:4100/dashboard",
@@ -610,15 +684,98 @@ test(
         "invent-model",
         "Geçerli kullanıcıyla giriş yap ve dashboard'u doğrula",
       );
-      assert.equal(invented.draft.error_code, "EXPLORATION_VALUE");
-      assert.equal(seenModels.includes("invent-model"), false);
+      assert.equal(invented.draft.status, "ready");
+      assert.equal(
+        invented.draft.inspection.stopped.reason,
+        "value_not_in_prompt",
+      );
+      assert.equal(invented.draft.inspection.path.length, 0);
+      assert.equal(
+        invented.draft.inspection.stopped.step.value,
+        "invented@example.test",
+      );
+      assert.equal(
+        invented.messages.some((m: { content: string }) =>
+          m.content.includes("Keşif erken durdu"),
+        ),
+        true,
+      );
+      const failedStep = await analyze(
+        "fail-model",
+        "qa@example.test ile giriş düğmesini dene",
+      );
+      assert.equal(failedStep.draft.status, "ready");
+      assert.equal(failedStep.draft.inspection.stopped.reason, "step_failed");
+      assert.equal(
+        failedStep.draft.inspection.stopped.message,
+        "Keşif adımı sayfada uygulanamadı.",
+      );
+      assert.equal(failedStep.draft.inspection.stopped.step.kind, "fill");
+      assert.equal(
+        failedStep.draft.inspection.stopped.step.locator.value,
+        "login-submit",
+      );
+      const ghost = await analyze("ghost-model", "Giriş sayfasını keşfet");
+      assert.equal(ghost.draft.inspection.stopped.reason, "unobserved_locator");
       const looped = await analyze(
         "loop-model",
         "Giriş sayfasındaki alanları keşfet",
       );
       assert.equal(looped.draft.status, "ready");
       assert.equal(looped.draft.inspection.path.length, 12);
-      assert.equal(looped.draft.inspection.stopped, "STEP_LIMIT");
+      assert.equal(looped.draft.inspection.stopped.reason, "limit_steps");
+      assert.equal(
+        looped.draft.inspection.stopped.message,
+        "Keşif adım sınırına ulaşıldı.",
+      );
+      // Expired leases fail the draft for both AI job kinds.
+      for (const [kind, status] of [
+        ["ai_analysis", "running"],
+        ["ai_generate", "generating"],
+      ] as const) {
+        const draftId = randomUUID(),
+          now = new Date().toISOString();
+        store.db
+          .prepare("INSERT INTO ai_drafts VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+          .run(
+            draftId,
+            admin.orgId,
+            demoProject,
+            queued.body.conversationId,
+            saved.body.id,
+            "test-model",
+            "http://127.0.0.1:4100/login",
+            null,
+            null,
+            status,
+            null,
+            now,
+          );
+        store.db
+          .prepare(
+            "INSERT INTO jobs (id,org_id,project_id,kind,payload,status,lease_token,lease_until,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+          )
+          .run(
+            kind === "ai_analysis" ? draftId : randomUUID(),
+            admin.orgId,
+            demoProject,
+            kind,
+            JSON.stringify({ draftId, prompt: "x" }),
+            "running",
+            randomUUID(),
+            Date.now() - 1000,
+            now,
+          );
+        store.claim();
+        assert.deepEqual(
+          {
+            ...store.db
+              .prepare("SELECT status,error_code FROM ai_drafts WHERE id=?")
+              .get(draftId),
+          },
+          { status: "failed", error_code: "WORKER_LEASE_EXPIRED" },
+        );
+      }
       assert.equal(looped.draft.inspection.pages.length, 1);
       assert.equal(
         (

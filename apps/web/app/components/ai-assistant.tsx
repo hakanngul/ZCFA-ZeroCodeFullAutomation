@@ -18,6 +18,16 @@ type Provider = {
 type AuthorizedOrigin = { id: string; origin: string; createdAt: string };
 type Conversation = { id: string; title: string; created_at: string };
 type Message = { id: string; role: string; content: string };
+type ExplorationLocator = { kind: string; value: string; role?: string };
+type ExplorationStep = {
+  kind: "fill" | "click";
+  locator: ExplorationLocator;
+  value?: string;
+  label?: string;
+  secret?: boolean;
+  from: string;
+  to?: string;
+};
 type Draft = {
   id: string;
   status: string;
@@ -26,11 +36,57 @@ type Draft = {
   inspection: {
     title: string;
     elements: unknown[];
-    pages: { title: string; url: string; elements: unknown[] }[];
-    path: unknown[];
+    pages: {
+      title: string;
+      url: string;
+      elements: { type?: string; locator: ExplorationLocator }[];
+    }[];
+    path: ExplorationStep[];
+    stopped?: { reason: string; message: string; step?: ExplorationStep };
   } | null;
   definition: AiSuite | null;
 };
+const draftTitles: Record<string, string> = {
+  queued: "Sıraya alındı…",
+  running: "Sayfa keşfediliyor…",
+  explored: "Keşif tamamlandı, senaryolar üretiliyor…",
+  generating: "Keşif tamamlandı, senaryolar üretiliyor…",
+  ready: "Senaryo taslağı",
+  failed: "Analiz başarısız",
+};
+function shortUrl(raw: string) {
+  try {
+    const url = new URL(raw);
+    return `${url.pathname}${url.search}` || "/";
+  } catch {
+    return raw;
+  }
+}
+function locatorText(locator: ExplorationLocator) {
+  return locator.kind === "role"
+    ? `${locator.role ?? "role"}: ${locator.value}`
+    : `${locator.kind}: ${locator.value}`;
+}
+/** Never show what was typed into a password field. */
+function isSecret(step: ExplorationStep, draft: Draft) {
+  if (step.secret) return true;
+  const key = JSON.stringify([step.locator.kind, step.locator.value]);
+  return Boolean(
+    draft.inspection?.pages.some((page) =>
+      page.elements.some(
+        (element) =>
+          element.type === "password" &&
+          JSON.stringify([element.locator.kind, element.locator.value]) === key,
+      ),
+    ),
+  );
+}
+function stepText(step: ExplorationStep, draft: Draft) {
+  const target = step.label || locatorText(step.locator);
+  if (step.kind === "click") return `“${target}” tıkla`;
+  const value = isSecret(step, draft) ? "••••••" : `“${step.value ?? ""}”`;
+  return `“${target}” alanına ${value} yaz`;
+}
 type Suite = { id: string; definition: AiSuite };
 type Run = {
   id: string;
@@ -241,14 +297,9 @@ export function AiAssistant({
         {},
       );
       await loadConversation(response.conversationId);
-      const updated = await api<{ drafts: Draft[] }>(
-        `${root}/conversations/${response.conversationId}`,
+      setNotice(
+        "Kayıtlı keşif kullanılarak düzeltilmiş taslak üretiliyor; hazır olunca düzenleyebilirsin.",
       );
-      const draft = updated.drafts.find((d) => d.id === response.draftId);
-      if (draft?.definition) {
-        setEditingDraft(draft.id);
-        setSuiteJson(JSON.stringify(draft.definition, null, 2));
-      }
     });
   }
   const selected = providers.find((p) => p.id === providerId);
@@ -342,13 +393,7 @@ export function AiAssistant({
               ))}
               {drafts.map((d) => (
                 <div className="ai-draft" key={d.id}>
-                  <strong>
-                    {d.status === "ready"
-                      ? "Senaryo taslağı"
-                      : d.status === "failed"
-                        ? "Analiz başarısız"
-                        : "Sayfa inceleniyor…"}
-                  </strong>
+                  <strong>{draftTitles[d.status] ?? d.status}</strong>
                   {d.error_code && <p>{d.error_code}</p>}
                   {d.inspection && (
                     <>
@@ -364,6 +409,51 @@ export function AiAssistant({
                           </li>
                         ))}
                       </ul>
+                      <ol className="ai-exploration" aria-label="Keşif yolu">
+                        <li>
+                          <span className="ai-exploration-page">
+                            {shortUrl(
+                              d.inspection.pages[0]?.url ?? d.target_url,
+                            )}
+                          </span>
+                          <span>Başlangıç sayfası açıldı</span>
+                        </li>
+                        {d.inspection.path.map((step, i) => (
+                          <li key={i}>
+                            <span className="ai-exploration-page">
+                              {shortUrl(step.from)}
+                            </span>
+                            <span>{stepText(step, d)}</span>
+                            <span className="ai-exploration-result">
+                              →{" "}
+                              {step.to && step.to !== step.from
+                                ? shortUrl(step.to)
+                                : "aynı sayfa"}
+                            </span>
+                          </li>
+                        ))}
+                        {d.inspection.stopped?.step && (
+                          <li className="failed">
+                            <span className="ai-exploration-page">
+                              {shortUrl(d.inspection.stopped.step.from)}
+                            </span>
+                            <span>
+                              {stepText(d.inspection.stopped.step, d)}
+                            </span>
+                            <span className="ai-exploration-result">
+                              → uygulanmadı
+                            </span>
+                          </li>
+                        )}
+                      </ol>
+                      {d.inspection.stopped &&
+                        d.inspection.stopped.reason !== "done" && (
+                          <p className="ai-exploration-warning" role="note">
+                            Keşif erken durdu ({d.inspection.stopped.reason}):{" "}
+                            {d.inspection.stopped.message} Taslak yalnız görülen
+                            sayfalara dayanıyor.
+                          </p>
+                        )}
                     </>
                   )}
                   {d.definition && (

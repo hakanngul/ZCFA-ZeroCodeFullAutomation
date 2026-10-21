@@ -1,5 +1,10 @@
 import { resolve } from "node:path";
-import { localDir, Store, type Job } from "../../../packages/storage/src/index";
+import {
+  draftIdOf,
+  localDir,
+  Store,
+  type Job,
+} from "../../../packages/storage/src/index";
 import {
   discover,
   execute,
@@ -99,6 +104,12 @@ while (!stopping) {
         prompt,
       );
       store.transaction(() => {
+        const valid = store.db
+          .prepare(
+            "SELECT id FROM jobs WHERE id=? AND status='running' AND lease_token=? AND lease_until>=?",
+          )
+          .get(job.id, job.lease_token, Date.now());
+        if (!valid) return;
         const now = new Date().toISOString();
         const save = store.db.prepare(
           `INSERT INTO ai_page_elements VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
@@ -126,15 +137,59 @@ while (!stopping) {
             );
         }
         store.db
-          .prepare("UPDATE ai_drafts SET inspection=? WHERE id=? AND org_id=?")
+          .prepare(
+            "UPDATE ai_drafts SET status='explored',inspection=? WHERE id=? AND org_id=? AND status='running'",
+          )
           .run(JSON.stringify(inspection), job.id, job.org_id);
+        // Suite generation runs as its own job so each stays within the lease.
+        store.db
+          .prepare(
+            "INSERT INTO jobs (id,org_id,project_id,kind,payload,status,created_at) VALUES (?,?,?,?,?,?,?)",
+          )
+          .run(
+            randomUUID(),
+            job.org_id,
+            job.project_id,
+            "ai_generate",
+            JSON.stringify({ draftId: job.id, prompt }),
+            "queued",
+            now,
+          );
+        store.db
+          .prepare("UPDATE jobs SET status='done' WHERE id=? AND lease_token=?")
+          .run(job.id, job.lease_token);
       });
+    } else if (job.kind === "ai_generate") {
+      const payload = JSON.parse(job.payload) as {
+        draftId: string;
+        prompt: string;
+        revision?: { previous: unknown; instruction: string };
+      };
+      const draft = store.db
+        .prepare(
+          "SELECT * FROM ai_drafts WHERE id=? AND org_id=? AND project_id=? AND status='generating'",
+        )
+        .get(payload.draftId, job.org_id, job.project_id);
+      if (!draft) throw new DomainError("NOT_FOUND", "AI taslağı bulunamadı.");
+      const provider = store.db
+        .prepare("SELECT * FROM ai_providers WHERE id=? AND org_id=?")
+        .get(draft.provider_id as string, job.org_id) as Provider | undefined;
+      if (!provider)
+        throw new DomainError("PROVIDER_MISSING", "Provider silinmiş.");
+      const target = authorizedTarget(
+        draft.target_url as string,
+        store.authorizedOrigins(job.org_id),
+      );
+      const inspection = normalizeInspection(
+        JSON.parse((draft.inspection as string | null) ?? "{}"),
+      );
       const suite = await generateSuite(
         provider,
         draft.model as string,
-        prompt,
+        payload.prompt,
         target,
         inspection,
+        payload.revision,
       );
       store.transaction(() => {
         const valid = store.db
@@ -145,21 +200,22 @@ while (!stopping) {
         if (!valid) return;
         store.db
           .prepare(
-            "UPDATE ai_drafts SET status='ready',inspection=?,definition=? WHERE id=? AND org_id=?",
+            "UPDATE ai_drafts SET status='ready',definition=? WHERE id=? AND org_id=? AND status='generating'",
           )
-          .run(
-            JSON.stringify(inspection),
-            JSON.stringify(suite),
-            job.id,
-            job.org_id,
-          );
+          .run(JSON.stringify(suite), payload.draftId, job.org_id);
+        const early =
+          inspection.stopped && inspection.stopped.reason !== "done"
+            ? ` Keşif erken durdu: ${inspection.stopped.message}`
+            : "";
         store.db
           .prepare("INSERT INTO ai_messages VALUES (?,?,?,?,?)")
           .run(
             randomUUID(),
             draft.conversation_id,
             "assistant",
-            `${inspection.pages.length} sayfa incelendi (${inspection.path.length} keşif adımı, ${normalizeInspection(inspection).elements.length} element). ${suite.scenarios.length} senaryo taslağı hazır. Kaydetmeden önce düzenleyip onaylayın.`,
+            payload.revision
+              ? `Düzeltilmiş taslak hazır: ${suite.scenarios.length} senaryo. Kaydetmeden önce düzenleyip onaylayın.`
+              : `${inspection.pages.length} sayfa incelendi (${inspection.path.length} keşif adımı, ${inspection.elements.length} element). ${suite.scenarios.length} senaryo taslağı hazır.${early} Kaydetmeden önce düzenleyip onaylayın.`,
             new Date().toISOString(),
           );
         store.db
@@ -311,19 +367,20 @@ while (!stopping) {
         steps: [],
         assertionsExecuted: 0,
       });
-    else if (job.kind === "ai_analysis")
+    else if (job.kind === "ai_analysis" || job.kind === "ai_generate")
       store.transaction(() => {
+        const draftId = draftIdOf(job);
         const draft = store.db
           .prepare(
             "SELECT conversation_id FROM ai_drafts WHERE id=? AND org_id=?",
           )
-          .get(job.id, job.org_id);
+          .get(draftId, job.org_id);
         const code = error instanceof DomainError ? error.code : "AGENT_ERROR";
         store.db
           .prepare(
-            "UPDATE ai_drafts SET status='failed',error_code=? WHERE id=? AND org_id=? AND status='running'",
+            "UPDATE ai_drafts SET status='failed',error_code=? WHERE id=? AND org_id=? AND status IN ('running','explored','generating')",
           )
-          .run(code, job.id, job.org_id);
+          .run(code, draftId, job.org_id);
         if (draft)
           store.db
             .prepare("INSERT INTO ai_messages VALUES (?,?,?,?,?)")
@@ -331,9 +388,7 @@ while (!stopping) {
               randomUUID(),
               draft.conversation_id,
               "assistant",
-              error instanceof DomainError
-                ? `Analiz tamamlanamadı: ${error.message} (${code})`
-                : `Analiz tamamlanamadı: ${code}`,
+              `${job.kind === "ai_generate" ? "Senaryo üretimi" : "Analiz"} tamamlanamadı: ${error instanceof DomainError ? `${error.message} (${code})` : code}`,
               new Date().toISOString(),
             );
         store.db

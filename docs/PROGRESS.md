@@ -1,5 +1,26 @@
 # Devam noktası — 19 Ekim 2026
 
+## 21 Ekim 2026 — Keşif şeffaflığı ve iki aşamalı AI işi
+
+`exploreTarget` artık sessizce durmuyor: `inspection.stopped = {reason,
+message, step?}` (`done`, `limit_pages`, `limit_steps`, `timeout`,
+`step_failed`, `invalid_step`, `unobserved_locator`, `value_not_in_prompt`) ve
+Türkçe kısa mesaj kaydediliyor; eski string kodlar `normalizeInspection` ile
+dönüştürülüyor. Gözlenmeyen locator ve istekte olmayan `fill` değeri artık
+analizi düşürmüyor; adım uygulanmadan keşif durup görülen sayfalarla devam
+ediyor. Taslak kartı keşif yolunu (sayfa → eylem → sonuç) ve erken durma
+uyarısını gösteriyor; parola alanı değerleri API'de ve UI'da maskeleniyor.
+Analiz ikiye bölündü: `ai_analysis` (keşif → taslak `explored`) ardından
+`ai_generate` (kayıtlı keşiften suite, `generating` → `ready`). Revise doğrudan
+`ai_generate` kuyruğa alıyor (202, önceki suite + `instruction`). Lease süresi
+dolunca iki tür de taslağı `WORKER_LEASE_EXPIRED` ile `failed` yapıyor. jobs
+tablosunda CHECK olmadığından migration gerekmedi. Gerçek doğrulama (Evren
+`deepseek-v4.1-flash`, SauceDemo): keşif ~10 sn, 3 sayfa / 5 adım, durma
+nedeni `done`; üretim ~25 sn, 2 senaryo; iki iş de `done`. Kanıt:
+`docs/evidence/assistant/exploration-path.png`. Sınır: erken durma uyarısı
+gerçek sitede görülmedi (yalnız mock testlerde); worker `ai_generate` için de
+tarayıcı açıyor.
+
 ## 21 Ekim 2026 — AI element listesi gruplama ve kararlı locator
 
 Elementler → "Web sitelerinden kaydedilen elementler" artık tek uzun tablo

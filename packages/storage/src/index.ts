@@ -22,7 +22,13 @@ export type Job = {
   id: string;
   org_id: string;
   project_id: string;
-  kind: "discovery" | "run" | "locator_check" | "ai_analysis" | "ai_suite";
+  kind:
+    | "discovery"
+    | "run"
+    | "locator_check"
+    | "ai_analysis"
+    | "ai_generate"
+    | "ai_suite";
   payload: string;
   lease_token: string;
   lease_until: number;
@@ -41,6 +47,15 @@ export type Run = {
   finished_at: string | null;
 };
 
+/** ai_analysis jobs share the draft id; ai_generate carries it in the payload. */
+export function draftIdOf(job: Pick<Job, "id" | "kind" | "payload">) {
+  if (job.kind !== "ai_generate") return job.id;
+  try {
+    return String((JSON.parse(job.payload) as { draftId?: unknown }).draftId);
+  } catch {
+    return "";
+  }
+}
 export class Store {
   db: DatabaseSync;
   dataDir: string;
@@ -342,12 +357,12 @@ export class Store {
               job.id,
               job.org_id,
             );
-        else if (job.kind === "ai_analysis")
+        else if (job.kind === "ai_analysis" || job.kind === "ai_generate")
           this.db
             .prepare(
-              "UPDATE ai_drafts SET status='failed',error_code='WORKER_LEASE_EXPIRED' WHERE id=? AND org_id=?",
+              "UPDATE ai_drafts SET status='failed',error_code='WORKER_LEASE_EXPIRED' WHERE id=? AND org_id=? AND status IN ('queued','running','explored','generating')",
             )
-            .run(job.id, job.org_id);
+            .run(draftIdOf(job), job.org_id);
         else if (job.kind === "ai_suite")
           this.db
             .prepare(
@@ -388,6 +403,14 @@ export class Store {
           "UPDATE jobs SET status='running',lease_token=?,lease_until=? WHERE id=?",
         )
         .run(token, until, job.id);
+      if (job.kind === "ai_generate") {
+        this.db
+          .prepare(
+            "UPDATE ai_drafts SET status='generating' WHERE id=? AND org_id=? AND status='explored'",
+          )
+          .run(draftIdOf(job), job.org_id);
+        return { ...job, lease_token: token, lease_until: until };
+      }
       const table =
         job.kind === "run"
           ? "runs"

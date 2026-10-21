@@ -135,17 +135,27 @@ Taslak JSON olarak düzenlenir, insan onayıyla kaydedilir; `Testler` ekranında
 **AI suite’ler** listesinde ve chat'te görünür. Çalıştırma her senaryoyu ayrı
 Chromium context'inde yürütür; durum, adım hataları, başarılı/başarısız/atlanan
 sayıları ve her adımın yetki/checksum kontrollü ekran görüntüsü chat'te görünür. Başarısız
-suite için modelden hata önerisi istenir; suite yeni taslak olarak düzeltilip
-tekrar onaylanabilir. Kod çalıştırma, otomatik locator değiştirme ve sınırsız
+suite için modelden hata önerisi istenir; suite yeni taslak olarak yeniden
+ürettirilip tekrar onaylanabilir. Kod çalıştırma, otomatik locator değiştirme ve sınırsız
 agent döngüsü yoktur.
 
 AI planlayıcı hedef sayfadan başlayıp sınırlı bir keşif döngüsü yürütür: model
 her turda gözlenen öğelerden tek bir `fill`/`click` adımı ya da `{"done":true}`
 döndürür, worker adımı aynı Chromium context'inde uygular ve yeni sayfayı
 gözler. Sınırlar: en fazla 5 sayfa, 12 keşif adımı, 120 saniye, yalnız aynı
-origin. `fill` değeri kullanıcının isteğinde birebir geçmiyorsa (ör. uydurulmuş
-kimlik bilgisi) analiz `EXPLORATION_VALUE` ile durur; gözlenmeyen locator
-`UNOBSERVED_LOCATOR` olur. Suite taslağı tüm incelenen sayfaların birleşik
+origin. Keşif her zaman yapılandırılmış bir durma nedeni kaydeder
+(`inspection.stopped = {reason, message, step?}`): `done`, `limit_pages`,
+`limit_steps`, `timeout`, `step_failed`, `invalid_step`, `unobserved_locator`,
+`value_not_in_prompt` (ör. uydurulmuş kimlik bilgisi; adım uygulanmaz). Erken
+durmada o ana kadar görülen sayfalarla devam edilir; taslak kartı keşif yolunu
+adım adım (sayfa → eylem → sonuç) ve erken durma uyarısını gösterir. Parola
+alanına yazılan değerler API yanıtında ve arayüzde `••••••` olarak maskelenir.
+Analiz iki ayrı kuyruk işidir: `ai_analysis` yalnız keşfi yapar ve taslağı
+`explored` durumuna alır, ardından `ai_generate` kayıtlı keşiften suite üretir
+(`generating` → `ready`); böylece her iş 180 sn lease içinde kalır. Süresi dolan
+lease her iki tür için taslağı `failed / WORKER_LEASE_EXPIRED` yapar. "Yeni
+taslak olarak düzelt" keşfi tekrarlamaz, doğrudan `ai_generate` kuyruğa alır
+(önceki suite ve isteğe bağlı `instruction` ile). Suite taslağı tüm incelenen sayfaların birleşik
 locator kümesini kullanır, her senaryo yine `targetUrl`'den başlar ve keşif
 yolunu tekrarlar (senaryo başına en fazla 20 adım). Gözlenmeyen locator önerisi
 bir düzeltme çağrısıyla modele geri bildirilir. Sayfa başına en fazla 60 öğe

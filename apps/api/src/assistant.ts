@@ -11,6 +11,7 @@ import { aiSuiteSchema } from "../../../packages/assistant/src/spec";
 import {
   authorizedTarget,
   normalizeInspection,
+  maskInspection,
 } from "../../../packages/assistant/src/agent";
 import {
   encrypt,
@@ -421,7 +422,9 @@ export function registerAssistant(
         .map((row) => ({
           ...row,
           inspection: row.inspection
-            ? normalizeInspection(JSON.parse(row.inspection as string))
+            ? maskInspection(
+                normalizeInspection(JSON.parse(row.inspection as string)),
+              )
             : null,
           definition: row.definition
             ? JSON.parse(row.definition as string)
@@ -640,34 +643,92 @@ export function registerAssistant(
     "/v1/projects/:projectId/ai/suites/:id/revise",
     async (request, reply) => {
       const { user, projectId } = scoped(request, true),
-        { id } = idParam.parse(request.params);
+        { id } = idParam.parse(request.params),
+        input = z
+          .object({ instruction: z.string().trim().max(2000).optional() })
+          .strict()
+          .parse(request.body ?? {});
       const row = store.db
         .prepare(
-          "SELECT s.definition,d.conversation_id,d.provider_id,d.model,d.target_url,d.inspection FROM ai_suites s JOIN ai_drafts d ON d.id=s.draft_id WHERE s.id=? AND s.org_id=? AND s.project_id=?",
+          "SELECT s.definition,s.draft_id,d.conversation_id,d.provider_id,d.model,d.target_url,d.inspection FROM ai_suites s JOIN ai_drafts d ON d.id=s.draft_id WHERE s.id=? AND s.org_id=? AND s.project_id=?",
         )
         .get(id, user.orgId, projectId);
       if (!row) throw new DomainError("NOT_FOUND", "Suite bulunamadı.", 404);
+      if (!row.inspection)
+        throw new DomainError("DRAFT_NOT_READY", "Keşif sonucu yok.", 409);
+      // The original request travels with the analysis/generation job payload.
+      const source = store.db
+        .prepare(
+          "SELECT payload FROM jobs WHERE org_id=? AND ((kind='ai_analysis' AND id=?) OR (kind='ai_generate' AND json_extract(payload,'$.draftId')=?)) ORDER BY created_at LIMIT 1",
+        )
+        .get(user.orgId, row.draft_id, row.draft_id);
+      const prompt =
+        (source
+          ? (JSON.parse(source.payload as string) as { prompt?: string }).prompt
+          : undefined) ??
+        ((
+          store.db
+            .prepare(
+              "SELECT content FROM ai_messages WHERE conversation_id=? AND role='user' ORDER BY created_at DESC LIMIT 1",
+            )
+            .get(row.conversation_id) as { content?: string } | undefined
+        )?.content ||
+          "");
       const draftId = randomUUID(),
         now = new Date().toISOString();
-      store.db
-        .prepare("INSERT INTO ai_drafts VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
-        .run(
-          draftId,
-          user.orgId,
-          projectId,
-          row.conversation_id,
-          row.provider_id,
-          row.model,
-          row.target_url,
-          row.inspection,
-          row.definition,
-          "ready",
-          null,
-          now,
-        );
-      return reply
-        .code(201)
-        .send({ draftId, conversationId: row.conversation_id });
+      store.transaction(() => {
+        const pending = store.db
+          .prepare(
+            "SELECT count(*) AS n FROM jobs WHERE org_id=? AND status IN ('queued','running')",
+          )
+          .get(user.orgId)!.n as number;
+        if (pending >= 20)
+          throw new DomainError("QUEUE_FULL", "Kuyruk dolu.", 429);
+        store.db
+          .prepare("INSERT INTO ai_drafts VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+          .run(
+            draftId,
+            user.orgId,
+            projectId,
+            row.conversation_id,
+            row.provider_id,
+            row.model,
+            row.target_url,
+            row.inspection,
+            null,
+            "explored",
+            null,
+            now,
+          );
+        // Revision reuses the stored exploration and only regenerates the suite.
+        store.db
+          .prepare(
+            "INSERT INTO jobs (id,org_id,project_id,kind,payload,status,created_at) VALUES (?,?,?,?,?,?,?)",
+          )
+          .run(
+            randomUUID(),
+            user.orgId,
+            projectId,
+            "ai_generate",
+            JSON.stringify({
+              draftId,
+              prompt,
+              revision: {
+                previous: JSON.parse(row.definition as string),
+                instruction:
+                  input.instruction ||
+                  "Önceki suite'i gözden geçir; başarısız olabilecek adımları gözlenen locator'larla düzelt.",
+              },
+            }),
+            "queued",
+            now,
+          );
+      });
+      return reply.code(202).send({
+        draftId,
+        conversationId: row.conversation_id,
+        status: "explored",
+      });
     },
   );
   app.get("/v1/projects/:projectId/ai/runs/:id", async (request) => {

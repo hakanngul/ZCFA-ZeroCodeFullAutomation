@@ -339,3 +339,31 @@
 .ai-element-more {
   margin-top: 10px;
 }
+.ai-exploration {
+  margin: 8px 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.ai-exploration li span + span {
+  margin-left: 6px;
+}
+.ai-exploration-page {
+  font-family: ui-monospace, monospace;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.ai-exploration-result {
+  color: var(--green);
+}
+.ai-exploration li.failed .ai-exploration-result {
+  color: var(--orange);
+}
+.ai-exploration-warning {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--orange);
+  background: #fbf3e8;
+  color: #6d4417;
+}
