@@ -1007,3 +1007,41 @@
     font-size: 13px;
   }
 }
+
+/* Self-healing suggestions and "Birleştir" (ADR 016). */
+.ai-heal-suggestions,
+.ai-element-merge {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffbeb;
+}
+.ai-element-merge {
+  background: transparent;
+}
+.ai-heal-suggestions ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ai-heal-suggestions li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ai-heal-suggestions li > div {
+  flex: 1 1 420px;
+}
+.ai-element-merge button {
+  justify-self: start;
+}
+.ai-healed-summary {
+  color: #92400e;
+  font-weight: 600;
+}

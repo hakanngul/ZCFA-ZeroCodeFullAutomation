@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Bot, Plus, Send, Play, Check, Trash2, RefreshCw } from "lucide-react";
 import { api, ApiError } from "../lib/api";
 import type { AiSuite } from "../../../../packages/assistant/src/spec";
+import { SelfHealingSetting } from "./self-healing-setting";
 import { TestVariables } from "./test-variables";
 import { QualityFindings, type Findings } from "./quality-findings";
 import { ModelComparison, type Comparison } from "./model-comparison";
@@ -150,9 +151,11 @@ type Run = {
         element?: string;
         elementName?: string;
         locator?: ExplorationLocator;
+        healed?: { locator: ExplorationLocator; primary: ExplorationLocator };
       }[];
       screenshot?: { filename: string; sha256: string };
     }[];
+    healedSteps?: number;
   } | null;
 };
 type CompareEntry = { providerId: string; model: string };
@@ -639,6 +642,12 @@ export function AiAssistant({
                       {run.result.counts.skipped} atlandı
                     </p>
                   )}
+                  {!!run.result?.healedSteps && (
+                    <p className="ai-healed-summary" role="status">
+                      {run.result.healedSteps} adım alternatifle bulundu
+                      (self-healing). Öneriler Elementler ekranında.
+                    </p>
+                  )}
                   {run.result?.results?.map((r, i) => (
                     <div key={i}>
                       <strong>
@@ -652,6 +661,12 @@ export function AiAssistant({
                             ? ` · ${targetText(step)}`
                             : ""}
                           : {step.status} {step.code ?? ""}{" "}
+                          {step.healed && (
+                            <span className="badge awaiting_review">
+                              alternatifle bulundu:{" "}
+                              {locatorText(step.healed.locator)}
+                            </span>
+                          )}{" "}
                           {step.message ? `— ${step.message} ` : ""}
                           {step.screenshot && (
                             <a
@@ -960,6 +975,7 @@ export function AiAssistant({
             canEdit={canEdit}
             origins={authorizedOrigins.map((site) => site.origin)}
           />
+          <SelfHealingSetting projectId={projectId} canEdit={canEdit} />
           <div className="ai-settings-card card">
             <div className="ai-chat-head">
               <div>

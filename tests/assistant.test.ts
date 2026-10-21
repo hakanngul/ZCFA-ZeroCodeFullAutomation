@@ -27,6 +27,7 @@ import {
   normalizeElementRefs,
   observePage,
   pageForModel,
+  type ResolvedElements,
 } from "../packages/assistant/src/agent";
 import { launchBrowser } from "../packages/runner/src/index";
 import { createApp } from "../apps/api/src/app";
@@ -3719,3 +3720,120 @@ test("migration 011 drops the one-version-per-suite constraint and keeps rows", 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// Self-healing executor (ADR 016); API side in tests/self-healing.test.ts.
+test(
+  "self-healing tries approved alternatives only when enabled",
+  { timeout: 120000 },
+  async () => {
+    const dir = mkdtempSync(join(tmpdir(), "zc-heal-run-"));
+    const fixture = spawn(
+      process.execPath,
+      ["--import", "tsx", "tests/fixtures/server.ts"],
+      { detached: true, stdio: "ignore" },
+    );
+    const browser = await launchBrowser();
+    try {
+      await until(
+        async () =>
+          await fetch("http://127.0.0.1:4100/health").then(
+            (r) => r.ok,
+            () => false,
+          ),
+        10000,
+      );
+      const suite = aiSuiteSchema.parse({
+        title: "Heal",
+        targetUrl: "http://127.0.0.1:4100/quality/clean",
+        scenarios: [
+          {
+            title: "Arama",
+            category: "positive",
+            actions: [
+              { kind: "fill", element: "search.query", value: "abc" },
+              { kind: "assertVisible", element: "search.query" },
+            ],
+          },
+        ],
+      });
+      const bound = (
+        locator: { kind: string; value: string },
+        alternatives: { kind: string; value: string }[],
+      ): ResolvedElements => ({
+        "search.query": {
+          elementKey: "search.query",
+          elementId: randomUUID(),
+          revision: 3,
+          name: "Arama",
+          locator,
+          alternatives,
+        },
+      });
+      const broken = { kind: "id", value: "q-broken" };
+      const label = { kind: "label", value: "Search" };
+      let n = 0;
+      const run = (elements: ResolvedElements, selfHealing: boolean) =>
+        executeSuite(browser, suite, join(dir, String(n++)), [], [], elements, {
+          selfHealing,
+        });
+
+      // OFF: current behaviour exactly, alternatives are not tried.
+      const off = await run(bound(broken, [label]), false);
+      assert.equal(off.status, "failed");
+      assert.equal(off.results[0]!.steps[0]!.code, "ELEMENT_NOT_FOUND");
+      assert.equal(off.results[0]!.steps[0]!.healed, undefined);
+      assert.equal(off.healedSteps, 0);
+      assert.equal(off.selfHealing, false);
+
+      // ON: the first unique approved alternative is used and recorded.
+      const on = await run(
+        bound(broken, [{ kind: "id", value: "missing" }, label]),
+        true,
+      );
+      assert.equal(on.status, "passed");
+      assert.equal(on.healedSteps, 2);
+      for (const step of on.results[0]!.steps) {
+        assert.equal(step.status, "passed");
+        assert.deepEqual(step.healed, { locator: label, primary: broken });
+        assert.ok(step.screenshot?.sha256);
+      }
+
+      // An ambiguous alternative stops healing: normal failure.
+      const ambiguous = await run(
+        bound(broken, [{ kind: "css", value: "a" }, label]),
+        true,
+      );
+      assert.equal(ambiguous.status, "failed");
+      assert.equal(ambiguous.results[0]!.steps[0]!.code, "AMBIGUOUS_ELEMENT");
+      assert.equal(ambiguous.healedSteps, 0);
+      // No alternative matches: normal failure.
+      const none = await run(
+        bound(broken, [{ kind: "id", value: "missing" }]),
+        true,
+      );
+      assert.equal(none.results[0]!.steps[0]!.code, "ELEMENT_NOT_FOUND");
+      // A working primary is never replaced.
+      const primary = await run(
+        bound({ kind: "id", value: "q" }, [label]),
+        true,
+      );
+      assert.equal(primary.status, "passed");
+      assert.equal(primary.healedSteps, 0);
+      // An ambiguous primary is not healed either.
+      const ambiguousPrimary = await run(
+        bound({ kind: "css", value: "a" }, [label]),
+        true,
+      );
+      assert.equal(
+        ambiguousPrimary.results[0]!.steps[0]!.code,
+        "AMBIGUOUS_ELEMENT",
+      );
+    } finally {
+      await browser.close();
+      try {
+        if (fixture.pid) process.kill(-fixture.pid, "SIGTERM");
+      } catch {}
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);

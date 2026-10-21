@@ -34,6 +34,11 @@ type RunRow = {
   title: string;
   target_origin: string;
 };
+type HealLocator = { kind: string; value: string; role?: string };
+const healText = (l: HealLocator) =>
+  l.kind === "role"
+    ? `role=${l.role} ${JSON.stringify(l.value)}`
+    : `${l.kind}: ${l.value}`;
 type RunDetail = RunRow & {
   plan: { checksum: string; targetUrl: string; testRevision: number };
   result: {
@@ -51,9 +56,11 @@ type RunDetail = RunRow & {
         findings?: Findings;
         element?: string;
         elementName?: string;
+        healed?: { locator: HealLocator; primary: HealLocator };
       }[];
       screenshot?: { sha256: string };
     }[];
+    healedSteps?: number;
   } | null;
 };
 const statusLabels: Record<string, string> = {
@@ -356,6 +363,12 @@ export function PromotedRuns({
               {detail.result.counts.skipped} atlandı
             </p>
           )}
+          {!!detail.result?.healedSteps && (
+            <p className="ai-healed-summary" role="status">
+              {detail.result.healedSteps} adım alternatifle bulundu
+              (self-healing). Öneriler Elementler ekranında.
+            </p>
+          )}
           {detail.result?.results?.map((r, i) => (
             <div
               key={i}
@@ -369,7 +382,7 @@ export function PromotedRuns({
                 {r.steps
                   .map(
                     (s) =>
-                      `${s.kind}${s.element ? ` · ${s.elementName ? `${s.elementName} (${s.element})` : s.element}` : ""}: ${s.status}${s.code ? ` (${s.code})` : ""}${s.message ? ` — ${s.message}` : ""}`,
+                      `${s.kind}${s.element ? ` · ${s.elementName ? `${s.elementName} (${s.element})` : s.element}` : ""}: ${s.status}${s.code ? ` (${s.code})` : ""}${s.healed ? ` [alternatifle bulundu: ${healText(s.healed.locator)}]` : ""}${s.message ? ` — ${s.message}` : ""}`,
                   )
                   .join(" → ")}
               </small>

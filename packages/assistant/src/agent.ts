@@ -959,9 +959,12 @@ export type ResolvedElements = Record<
   string,
   | {
       elementKey: string;
+      elementId?: string;
       revision: number;
       name: string;
       locator: AiLocator | { kind: string; value: string; role?: string };
+      /** Approved alternatives of the pinned revision (ADR 016). */
+      alternatives?: { kind: string; value: string; role?: string }[];
     }
   | { unavailable: string }
 >;
@@ -970,6 +973,15 @@ type StepTarget = {
   elementName?: string;
   elementRevision?: number;
   locator?: { kind: string; value: string; role?: string };
+  /** Self-healing: the pinned primary matched nothing, this alternative did. */
+  healed?: {
+    locator: { kind: string; value: string; role?: string };
+    primary: { kind: string; value: string; role?: string };
+  };
+};
+export type ExecuteOptions = {
+  /** Project setting (default off): try approved alternatives (ADR 016). */
+  selfHealing?: boolean;
 };
 export async function executeSuite(
   browser: Browser,
@@ -978,6 +990,7 @@ export async function executeSuite(
   savedOrigins: Iterable<string> = [],
   variables: TestVariable[] = [],
   elements: ResolvedElements = {},
+  options: ExecuteOptions = {},
 ) {
   const target = authorizedTarget(suite.targetUrl, savedOrigins);
   await checkTargetNetwork(target);
@@ -1047,6 +1060,7 @@ export async function executeSuite(
           if (ref) {
             // Library references resolve only from their pinned revision.
             let spec = ref.locator;
+            let alternatives: NonNullable<StepTarget["locator"]>[] = [];
             if (ref.element) {
               const bound = elements[ref.element];
               if (!bound || "unavailable" in bound)
@@ -1055,13 +1069,29 @@ export async function executeSuite(
                   `Element kullanılamıyor (${bound && "unavailable" in bound ? bound.unavailable : "pinned_missing"}): ${ref.element}`,
                 );
               spec = bound.locator as AiLocator;
+              alternatives = bound.alternatives ?? [];
             }
-            const locator = locate(page, spec as LocatorSpec);
+            let locator = locate(page, spec as LocatorSpec);
             await locator
               .first()
               .waitFor({ state: "attached", timeout: 2000 })
               .catch(() => undefined);
-            const count = await locator.count();
+            let count = await locator.count();
+            // Self-healing (opt-in): only when the pinned primary matched
+            // nothing; approved alternatives in order, the first unique match
+            // wins, an ambiguous one stops healing. Expectations never change.
+            if (count === 0 && options.selfHealing && spec)
+              for (const alternative of alternatives) {
+                const candidate = locate(page, alternative as LocatorSpec);
+                const matches = await candidate.count();
+                if (!matches) continue;
+                if (matches === 1) {
+                  locator = candidate;
+                  count = 1;
+                  step.healed = { locator: alternative, primary: spec };
+                } else count = matches;
+                break;
+              }
             if (count !== 1)
               throw new DomainError(
                 count ? "AMBIGUOUS_ELEMENT" : "ELEMENT_NOT_FOUND",
@@ -1182,9 +1212,16 @@ export async function executeSuite(
       screenshot,
     });
   }
+  const healedSteps = results.reduce(
+    (sum, r) => sum + r.steps.filter((s) => s.healed).length,
+    0,
+  );
   return {
     status: results.every((r) => r.status === "passed") ? "passed" : "failed",
     results,
+    selfHealing: !!options.selfHealing,
+    // "N adım alternatifle bulundu" in run summaries.
+    healedSteps,
     counts: {
       passed: results.filter((r) => r.status === "passed").length,
       failed: results.filter((r) => r.status === "failed").length,

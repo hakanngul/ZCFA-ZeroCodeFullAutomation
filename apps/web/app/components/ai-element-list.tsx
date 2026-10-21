@@ -4,8 +4,10 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import {
   AiElementEditor,
+  ElementImpact,
   locatorLabel,
   type AiElement,
+  type LibraryLocator,
 } from "./ai-element-editor";
 
 type PageSummary = {
@@ -64,6 +66,9 @@ export function AiElementList({ projectId }: { projectId: string }) {
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [editing, setEditing] = useState("");
+  const [notice, setNotice] = useState("");
+  // Bumped after a merge or "Birincil yap": page counts and rows reload.
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     const timer = setTimeout(() => setQuery(input.trim()), 250);
@@ -89,7 +94,7 @@ export function AiElementList({ projectId }: { projectId: string }) {
     return () => {
       active = false;
     };
-  }, [projectId, query, status]);
+  }, [projectId, query, status, reload]);
 
   const load = async (pageUrl: string, offset: number) => {
     setGroups((current) => ({
@@ -213,6 +218,11 @@ export function AiElementList({ projectId }: { projectId: string }) {
           </small>
         )}
       </div>
+      <HealSuggestions
+        projectId={projectId}
+        onPromoted={() => setReload((n) => n + 1)}
+      />
+      {notice && <p role="status">{notice}</p>}
       {error && <p role="alert">{error}</p>}
       {!error && pages && !pages.length && (
         <p>
@@ -350,6 +360,13 @@ export function AiElementList({ projectId }: { projectId: string }) {
                                   element={element}
                                   onSaved={replace}
                                   onClose={() => setEditing("")}
+                                  onMerged={(target) => {
+                                    setEditing("");
+                                    setNotice(
+                                      `${element.elementKey} kaydı ${target.elementKey} elementine birleştirildi (sürüm ${target.revision}); kopya emekli edildi, geçmişi korunuyor.`,
+                                    );
+                                    setReload((n) => n + 1);
+                                  }}
                                 />
                               </td>
                             </tr>
@@ -379,6 +396,139 @@ export function AiElementList({ projectId }: { projectId: string }) {
           </div>
         );
       })}
+    </section>
+  );
+}
+
+type HealSuggestion = {
+  id: string;
+  elementId: string;
+  elementKey: string;
+  revision: number;
+  primary: LibraryLocator;
+  locator: LibraryLocator;
+  runKind: string;
+  runId: string;
+  steps: number;
+  createdAt: string;
+  element: {
+    name: string;
+    revision: number;
+    approved: boolean;
+    merged: boolean;
+    locator: LibraryLocator;
+  } | null;
+};
+/**
+ * Self-healing suggestions (ADR 016): a run found the element with an
+ * approved alternative. "Birincil yap" makes it primary (new revision →
+ * affected tests); "Yoksay" closes the suggestion.
+ */
+function HealSuggestions({
+  projectId,
+  onPromoted,
+}: {
+  projectId: string;
+  onPromoted: () => void;
+}) {
+  const [items, setItems] = useState<HealSuggestion[]>([]);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const [done, setDone] = useState<{
+    elementId: string;
+    revision: number;
+    message: string;
+  } | null>(null);
+  const [tick, setTick] = useState(0);
+  const root = `/v1/projects/${projectId}/ai/heal-suggestions`;
+  useEffect(() => {
+    void api<{ suggestions: HealSuggestion[] }>(root)
+      .then((data) => setItems(data.suggestions))
+      .catch((failure) => setError(String(failure)));
+  }, [root, tick]);
+  const act = async (item: HealSuggestion, action: "promote" | "ignore") => {
+    setBusy(item.id);
+    setError("");
+    try {
+      if (action === "promote") {
+        const result = await api<{ element: AiElement }>(
+          `${root}/${item.id}/promote`,
+          "POST",
+          { expectedRevision: item.element?.revision ?? item.revision },
+        );
+        setDone({
+          elementId: result.element.id,
+          revision: result.element.revision,
+          message: `${item.elementKey}: ${locatorLabel(item.locator)} birincil yapıldı (sürüm ${result.element.revision}); eski birincil alternatiflerin sonuna taşındı.`,
+        });
+        onPromoted();
+      } else {
+        await api(`${root}/${item.id}/ignore`, "POST", {});
+        setDone(null);
+      }
+      setTick((n) => n + 1);
+    } catch (failure) {
+      setError(String(failure));
+    } finally {
+      setBusy("");
+    }
+  };
+  if (!items.length && !done && !error) return null;
+  return (
+    <section
+      className="ai-heal-suggestions"
+      aria-label="Self-healing önerileri"
+    >
+      <strong>Self-healing önerileri ({items.length})</strong>
+      <small>
+        Çalıştırmada birincil locator bulunamadı, onaylı bir alternatifle
+        bulundu. Birincil yapmak elementin yeni sürümünü oluşturur; etkilenen
+        testler için yeni sürüm ayrıca onaylanır.
+      </small>
+      <ul>
+        {items.map((item) => (
+          <li key={item.id}>
+            <div>
+              <b>{item.element?.name || item.elementKey}</b>{" "}
+              <code>{item.elementKey}</code> · v{item.revision} · birincil{" "}
+              <code>{locatorLabel(item.primary)}</code> bulunamadı →{" "}
+              <code>{locatorLabel(item.locator)}</code> ile bulundu ·{" "}
+              {item.steps} adım ·{" "}
+              {item.runKind === "ai_test_run" ? "test" : "suite"} çalışması{" "}
+              {item.runId.slice(0, 8)} ·{" "}
+              {new Date(item.createdAt).toLocaleString("tr-TR")}
+            </div>
+            <button
+              type="button"
+              className="primary"
+              disabled={!!busy || !item.element || item.element.merged}
+              aria-label={`${item.elementKey} için ${locatorLabel(item.locator)} birincil yap`}
+              onClick={() => void act(item, "promote")}
+            >
+              Birincil yap
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={!!busy}
+              onClick={() => void act(item, "ignore")}
+            >
+              Yoksay
+            </button>
+          </li>
+        ))}
+      </ul>
+      {done && (
+        <div>
+          <p role="status">{done.message}</p>
+          <ElementImpact
+            projectId={projectId}
+            elementId={done.elementId}
+            revision={done.revision}
+          />
+        </div>
+      )}
+      {error && <p role="alert">{error}</p>}
     </section>
   );
 }

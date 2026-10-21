@@ -18,9 +18,11 @@ import {
 } from "../../domain/src/index";
 import {
   migrateAiElementLibrary,
+  migrateElementMerge,
   migrateSuggestedAlternatives,
 } from "./ai-elements";
 export * from "./ai-elements";
+export * from "./self-healing";
 
 export const localDir = resolve(process.env.ZC_DATA_DIR ?? ".local");
 export type Job = {
@@ -199,6 +201,16 @@ export class Store {
       readFileSync(
         new URL(
           "../../../infra/migrations/011_ai_test_versions.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    migrateElementMerge(this.db);
+    this.db.exec(
+      readFileSync(
+        new URL(
+          "../../../infra/migrations/012_self_healing.sql",
           import.meta.url,
         ),
         "utf8",

@@ -3,6 +3,8 @@ import {
   approvedLibraryElements,
   draftIdOf,
   localDir,
+  projectSettings,
+  recordHealSuggestions,
   recordObservedElements,
   resolveElementPins,
   Store,
@@ -301,6 +303,13 @@ while (!stopping) {
         throw new DomainError("NOT_FOUND", "Suite çalışması bulunamadı.");
       const suite = aiSuiteSchema.parse(JSON.parse(row.definition as string));
       store.extendLease(job, suiteLeaseMs(suite.scenarios.length));
+      // Element keys resolve from the revisions pinned at approval.
+      const elements = resolveElementPins(
+        store.db,
+        job.org_id,
+        job.project_id,
+        suitePins(store.db, job.org_id, row.suite_id as string),
+      );
       const result = await executeSuite(
         browser!,
         suite,
@@ -313,13 +322,9 @@ while (!stopping) {
           job.project_id,
           new URL(suite.targetUrl).origin,
         ),
-        // Element keys resolve from the revisions pinned at approval.
-        resolveElementPins(
-          store.db,
-          job.org_id,
-          job.project_id,
-          suitePins(store.db, job.org_id, row.suite_id as string),
-        ),
+        elements,
+        // Read per run: the project setting can change between runs.
+        projectSettings(store.db, job.org_id, job.project_id),
       );
       let advice: string | undefined;
       if (result.status === "failed") {
@@ -395,13 +400,22 @@ while (!stopping) {
             job.id,
             job.org_id,
           );
+        recordHealSuggestions(
+          store.db,
+          job.org_id,
+          job.project_id,
+          "ai_suite",
+          job.id,
+          result,
+          elements,
+        );
         store.db
           .prepare("INSERT INTO ai_messages VALUES (?,?,?,?,?)")
           .run(
             randomUUID(),
             row.conversation_id,
             "assistant",
-            `Suite tamamlandı: ${result.counts.passed} başarılı, ${result.counts.failed} başarısız, ${result.counts.skipped} atlandı.`,
+            `Suite tamamlandı: ${result.counts.passed} başarılı, ${result.counts.failed} başarısız, ${result.counts.skipped} atlandı.${result.healedSteps ? ` ${result.healedSteps} adım alternatifle bulundu (self-healing); öneriler Elementler'de.` : ""}`,
             new Date().toISOString(),
           );
         if (advice)
@@ -428,6 +442,7 @@ while (!stopping) {
         throw new DomainError("NOT_FOUND", "Test çalışması bulunamadı.");
       const plan = JSON.parse(row.plan as string) as PromotedPlan;
       let status: string, result: unknown;
+      let elements: ResolvedElements = {};
       try {
         if (plan.checksum !== row.checksum)
           throw new DomainError(
@@ -437,6 +452,7 @@ while (!stopping) {
         // executeSuite re-reads target authorization and test data at run time.
         const suite = verifyPlan(plan);
         store.extendLease(job, suiteLeaseMs(suite.scenarios.length));
+        elements = planElements(job, plan);
         const outcome = await executeSuite(
           browser!,
           suite,
@@ -448,7 +464,8 @@ while (!stopping) {
             job.project_id,
             new URL(suite.targetUrl).origin,
           ),
-          planElements(job, plan),
+          elements,
+          projectSettings(store.db, job.org_id, job.project_id),
         );
         status =
           outcome.status === "passed" && !evidencedPass(plan, outcome)
@@ -482,6 +499,15 @@ while (!stopping) {
             job.id,
             job.org_id,
           );
+        recordHealSuggestions(
+          store.db,
+          job.org_id,
+          job.project_id,
+          "ai_test_run",
+          job.id,
+          result as Parameters<typeof recordHealSuggestions>[5],
+          elements,
+        );
         store.db
           .prepare("UPDATE jobs SET status='done' WHERE id=? AND lease_token=?")
           .run(job.id, job.lease_token);

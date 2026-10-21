@@ -37,6 +37,7 @@ import {
   type Provider,
 } from "../../../packages/assistant/src/provider";
 import { registerPromotedTests } from "./promoted-tests";
+import { registerSelfHealing } from "./self-healing";
 import { registerTestVariables } from "./test-variables";
 import { registerReporting } from "./reporting";
 import { comparisonView, registerComparisons } from "./comparisons";
@@ -205,7 +206,8 @@ export function registerAssistant(
     const { user, projectId } = scoped(request);
     const query = elementQuery.parse(request.query ?? {});
     // Search and page filters run in SQLite; rows are always capped.
-    const where = ["org_id=?", "project_id=?"];
+    // Merged duplicates are retired (migration 012); history stays readable.
+    const where = ["org_id=?", "project_id=?", "merged_into IS NULL"];
     const args: string[] = [user.orgId, projectId];
     if (query.q) {
       const like = `%${query.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -1001,6 +1003,7 @@ export function registerAssistant(
     );
   }
   registerPromotedTests(app, store, scoped);
+  registerSelfHealing(app, store, scoped);
   registerTestVariables(app, store, scoped);
   registerReporting(app, store, scoped);
   registerComparisons(app, store, scoped, { getProvider, resolveTarget });

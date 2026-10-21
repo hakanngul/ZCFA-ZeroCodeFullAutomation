@@ -182,7 +182,7 @@ export function migrateAiElementLibrary(db: DatabaseSync) {
   }
 }
 
-type ElementRow = {
+export type ElementRow = {
   id: string;
   org_id: string;
   project_id: string;
@@ -204,8 +204,11 @@ type ElementRow = {
   first_seen_at: string;
   last_seen_at: string;
   suggested_alternatives?: string;
+  /** Migration 012: `merged` rows are retired duplicates (never deleted). */
+  status?: string;
+  merged_into?: string | null;
 };
-function primaryOf(row: ElementRow): LibraryLocator {
+export function primaryOf(row: ElementRow): LibraryLocator {
   return (
     row.locator_kind === "role"
       ? {
@@ -224,11 +227,11 @@ function parseLocators(raw: string | undefined): LibraryLocator[] {
     return [];
   }
 }
-function alternativesOf(row: ElementRow): LibraryLocator[] {
+export function alternativesOf(row: ElementRow): LibraryLocator[] {
   return parseLocators(row.alternatives);
 }
 /** Candidates seen on an approved element; never used for execution. */
-function suggestionsOf(row: ElementRow): LibraryLocator[] {
+export function suggestionsOf(row: ElementRow): LibraryLocator[] {
   return parseLocators(row.suggested_alternatives);
 }
 export function aiElementView(row: ElementRow) {
@@ -253,6 +256,8 @@ export function aiElementView(row: ElementRow) {
     approved: row.approved === 1,
     revision: row.revision,
     fragile: isFragileLibraryLocator(locator),
+    status: row.status ?? "active",
+    mergedInto: row.merged_into ?? null,
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at,
   };
@@ -286,7 +291,7 @@ export function recordObservedElements(
 ) {
   const stats = { created: 0, matched: 0 };
   const load = db.prepare(
-    "SELECT * FROM ai_page_elements WHERE org_id=? AND project_id=? AND page_url=? ORDER BY first_seen_at,id",
+    "SELECT * FROM ai_page_elements WHERE org_id=? AND project_id=? AND page_url=? AND merged_into IS NULL ORDER BY first_seen_at,id",
   );
   const insert = db.prepare(
     `INSERT OR IGNORE INTO ai_page_elements (id,org_id,project_id,page_url,tag,label,role,input_type,locator_kind,locator_value,first_seen_at,last_seen_at,origin,element_key,name,page_key,approved,alternatives,revision,locator_role)
@@ -336,10 +341,13 @@ export function recordObservedElements(
         .slice(0, 1 + maxAlternatives);
       if (!candidates.length) continue;
       const keys = candidates.map(libraryLocatorKey);
+      // Suggestions count too: a merged duplicate's locators live there.
       const matches = rows.filter((entry) =>
-        [entry.primary, ...entry.alternatives.map(libraryLocatorKey)].some(
-          (key) => keys.includes(key),
-        ),
+        [
+          entry.primary,
+          ...entry.alternatives.map(libraryLocatorKey),
+          ...entry.suggestions.map(libraryLocatorKey),
+        ].some((key) => keys.includes(key)),
       );
       // Prefer an approved element, then the one whose primary is the best candidate.
       const match = matches.sort(
@@ -456,6 +464,22 @@ export function aiElement(
   if (!row) throw new DomainError("NOT_FOUND", "Element bulunamadı.", 404);
   return row;
 }
+/** A library element that was not retired by a merge (migration 012). */
+export function activeElement(
+  db: DatabaseSync,
+  orgId: string,
+  projectId: string,
+  id: string,
+) {
+  const row = aiElement(db, orgId, projectId, id);
+  if (row.merged_into)
+    throw new DomainError(
+      "ELEMENT_MERGED",
+      "Bu element başka bir elemente birleştirildi; birleştirilen elementi düzenleyin.",
+      409,
+    );
+  return row;
+}
 export function aiElementHistory(
   db: DatabaseSync,
   orgId: string,
@@ -481,7 +505,7 @@ export function aiElementHistory(
     alternatives: JSON.parse(row.alternatives as string) as LibraryLocator[],
   }));
 }
-function snapshot(
+export function snapshot(
   db: DatabaseSync,
   row: ElementRow,
   action: string,
@@ -520,7 +544,7 @@ export function updateAiElement(
   id: string,
   input: AiElementUpdate,
 ) {
-  const row = aiElement(db, actor.orgId, projectId, id);
+  const row = activeElement(db, actor.orgId, projectId, id);
   if (row.revision !== input.expectedRevision)
     throw new DomainError(
       "REVISION_CONFLICT",
@@ -560,7 +584,7 @@ export function updateAiElement(
   if (
     db
       .prepare(
-        "SELECT id FROM ai_page_elements WHERE org_id=? AND project_id=? AND page_url=? AND locator_kind=? AND locator_value=? AND id<>?",
+        "SELECT id FROM ai_page_elements WHERE org_id=? AND project_id=? AND page_url=? AND locator_kind=? AND locator_value=? AND id<>? AND merged_into IS NULL",
       )
       .get(
         actor.orgId,
@@ -653,7 +677,7 @@ export function acceptSuggestedAlternative(
   id: string,
   input: z.infer<typeof acceptSuggestionSchema>,
 ) {
-  const row = aiElement(db, actor.orgId, projectId, id);
+  const row = activeElement(db, actor.orgId, projectId, id);
   if (row.revision !== input.expectedRevision)
     throw new DomainError(
       "REVISION_CONFLICT",
@@ -839,7 +863,11 @@ export function suitePins(
 }
 export type ElementResolution = Record<
   string,
-  ElementBinding | { unavailable: string }
+  | (ElementBinding & {
+      /** Approved alternatives of the pinned revision (self-healing, ADR 016). */
+      alternatives: LibraryLocator[];
+    })
+  | { unavailable: string }
 >;
 /**
  * Resolves pins to the locator of their immutable revision. An element that
@@ -879,6 +907,8 @@ export function resolveElementPins(
         name: revision.name as string,
         pageUrl: revision.page_url as string,
         locator: JSON.parse(revision.locator as string) as LibraryLocator,
+        // Only the revision's alternatives: suggestions are never stored here.
+        alternatives: parseLocators(revision.alternatives as string),
       };
   }
   return result;
@@ -950,4 +980,164 @@ export function currentElementBindings(
     }
   }
   return { bindings, unavailable };
+}
+
+/**
+ * Guarded part of migration 012: `status` and `merged_into` mark a retired
+ * duplicate (SQLite has no ADD COLUMN IF NOT EXISTS). Safe on every start.
+ */
+export function migrateElementMerge(db: DatabaseSync) {
+  const have = new Set(
+    (
+      db.prepare("PRAGMA table_info(ai_page_elements)").all() as {
+        name: string;
+      }[]
+    ).map((row) => row.name),
+  );
+  const missing = (
+    [
+      ["status", "TEXT NOT NULL DEFAULT 'active'"],
+      ["merged_into", "TEXT"],
+    ] as const
+  ).filter(([name]) => !have.has(name));
+  if (!missing.length) return;
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    // API and worker may race; the loser sees the columns and skips.
+    const now = new Set(
+      (
+        db.prepare("PRAGMA table_info(ai_page_elements)").all() as {
+          name: string;
+        }[]
+      ).map((row) => row.name),
+    );
+    for (const [name, definition] of missing)
+      if (!now.has(name))
+        db.exec(
+          `ALTER TABLE ai_page_elements ADD COLUMN ${name} ${definition}`,
+        );
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export const mergeElementSchema = z
+  .object({
+    expectedRevision: z.number().int().min(1),
+    targetId: z.uuid(),
+    targetRevision: z.number().int().min(1),
+  })
+  .strict();
+/**
+ * "Birleştir" (ADR 016): an unapproved duplicate is merged into a target on
+ * the same page (caller wraps it in a transaction). Its locators become
+ * suggested alternatives of an approved target (never used until accepted)
+ * or alternatives of an unapproved one; the target gets a new revision. The
+ * duplicate is retired, not deleted: `status='merged'`, `merged_into`, a
+ * final history row with its original locators, and a placeholder primary so
+ * the page-level locator uniqueness no longer blocks the target.
+ */
+export function mergeAiElements(
+  db: DatabaseSync,
+  actor: Actor,
+  projectId: string,
+  sourceId: string,
+  input: z.infer<typeof mergeElementSchema>,
+) {
+  if (sourceId === input.targetId)
+    throw new DomainError(
+      "MERGE_SAME_ELEMENT",
+      "Element kendisiyle birleştirilemez.",
+    );
+  const source = activeElement(db, actor.orgId, projectId, sourceId);
+  const target = activeElement(db, actor.orgId, projectId, input.targetId);
+  if (
+    source.revision !== input.expectedRevision ||
+    target.revision !== input.targetRevision
+  )
+    throw new DomainError(
+      "REVISION_CONFLICT",
+      "Element değişti. Güncel sürümü açıp değişikliği tekrar uygula.",
+      409,
+    );
+  if (source.approved === 1)
+    throw new DomainError(
+      "ELEMENT_APPROVED",
+      "Onaylı element birleştirilemez; önce onayını kaldırın.",
+      409,
+    );
+  if (source.page_url !== target.page_url)
+    throw new DomainError(
+      "PAGE_MISMATCH",
+      "Yalnız aynı sayfadaki elementler birleştirilebilir.",
+      409,
+    );
+  const known = new Set(
+    [
+      primaryOf(target),
+      ...alternativesOf(target),
+      ...suggestionsOf(target),
+    ].map(libraryLocatorKey),
+  );
+  const incoming = [primaryOf(source), ...alternativesOf(source)].filter(
+    (locator) => {
+      const key = libraryLocatorKey(locator);
+      if (known.has(key)) return false;
+      known.add(key);
+      return true;
+    },
+  );
+  const approvedTarget = target.approved === 1;
+  const existing = approvedTarget
+    ? suggestionsOf(target)
+    : alternativesOf(target);
+  const room = Math.max(0, maxAlternatives - existing.length);
+  const added = incoming.slice(0, room);
+  const now = new Date().toISOString();
+  snapshot(db, target, "observed", "system", now);
+  const next: ElementRow = {
+    ...target,
+    alternatives: approvedTarget
+      ? target.alternatives
+      : JSON.stringify([...existing, ...added]),
+    suggested_alternatives: approvedTarget
+      ? JSON.stringify([...existing, ...added])
+      : (target.suggested_alternatives ?? "[]"),
+    revision: target.revision + 1,
+  };
+  db.prepare(
+    "UPDATE ai_page_elements SET alternatives=?,suggested_alternatives=?,revision=? WHERE id=? AND revision=?",
+  ).run(
+    next.alternatives,
+    next.suggested_alternatives!,
+    next.revision,
+    target.id,
+    target.revision,
+  );
+  snapshot(db, next, "merged", actor.userId, now);
+  // History keeps the duplicate's real locators; the live row is retired.
+  snapshot(db, source, "observed", "system", now);
+  snapshot(
+    db,
+    { ...source, revision: source.revision + 1 },
+    "merged_into",
+    actor.userId,
+    now,
+  );
+  db.prepare(
+    "UPDATE ai_page_elements SET status='merged',merged_into=?,locator_kind='merged',locator_value=?,locator_role='',alternatives='[]',suggested_alternatives='[]',revision=? WHERE id=? AND revision=?",
+  ).run(target.id, source.id, source.revision + 1, source.id, source.revision);
+  return {
+    element: aiElementView(next),
+    merged: {
+      id: source.id,
+      elementKey: source.element_key,
+      revision: source.revision + 1,
+    },
+    added,
+    skipped: incoming.length - added.length,
+    asSuggestions: approvedTarget,
+  };
 }

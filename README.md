@@ -117,7 +117,8 @@ locator / alternatifler (birincil yap, kaldır) ve onay değiştirilir; "Durum"
 filtresi onaylıları ayırır. Kayıt `PUT /v1/projects/:id/ai/elements/:elementId`
 ile `expectedRevision` ister (eskiyse 409); locator değişikliği onayı kaldırır,
 onaylı elementin anahtarı kilitlidir, her değişiklik salt okunur geçmişe
-yazılır. Alternatifler çalıştırmada otomatik denenmez. Onaylı elementin
+yazılır. Alternatifler varsayılan olarak çalıştırmada denenmez (opt-in
+self-healing için aşağıya bakın). Onaylı elementin
 yeniden gözlemde bulunan yeni adayları **önerilen alternatifler** olarak
 düzenleme panelinde görünür; "Alternatif olarak ekle" yeni revizyon üretir ve
 birincil locator değişmediği için onayı korur.
@@ -143,6 +144,27 @@ yazar; eski sürüm ve checksum'ı değişmez. Referanslardan biri onaysız ya d
 silinmişse istek liste halinde reddedilir. Yeni sürüm aynı panelden **Yeni
 sürümü çalıştır** ile mevcut çalıştırma hattında koşar. Onaylı elementte
 bekleyen önerilen alternatif sayısı listede ve panelde rozetle görünür.
+
+**Self-healing** (ADR 016, proje ayarı, varsayılan kapalı): **Ayarlar →
+Self-healing** açıksa, kütüphane referanslı bir adımda pinli birincil locator
+sayfada hiç eşleşmezse o revizyonun **onaylı** alternatifleri sırayla denenir;
+tekil eşleşen ilk alternatif kullanılır, adım "alternatifle bulundu" olarak
+işaretlenir ve çalışma özeti "N adım alternatifle bulundu" der (kanıtta
+kullanılan locator görünür). Önerilen alternatifler hiç denenmez, doğrulama
+beklentileri değişmez; çoklu eşleşen alternatif ya da hiç eşleşme normal
+hatadır. Kapalıyken davranış öncekiyle aynıdır. Her iyileşme Elementler
+ekranında **Self-healing önerileri** listesine düşer: **Birincil yap**
+iyileşen locator'ı birincil yapıp eskisini alternatiflerin sonuna taşır
+(locator kümesi aynı, onay korunur, yeni revizyon → etkilenen testler ve
+yeni sürüm akışı), **Yoksay** öneriyi kapatır.
+
+**Birleştir** (ADR 016): eski, onaysız bir kopya kayıt onaylı bir elementin
+locator'ını birincil olarak tutuyorsa (`LOCATOR_IN_USE`), kopyanın düzenleme
+panelindeki **Birleştir** ile aynı sayfadaki hedefe birleştirilir. Kopyanın
+locator'ları onaylı hedefte önerilen alternatif, onaysız hedefte alternatif
+olur; hedef yeni revizyon alır. Kopya silinmez: `merged` durumuna geçer,
+listeden çıkar, geçmişi (özgün locator'larıyla) korunur ve düzenlenemez.
+Onaylı element birleştirilemez.
 
 ## Mimari
 

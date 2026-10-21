@@ -28,6 +28,9 @@ export type AiElement = {
   approved: boolean;
   revision: number;
   fragile: boolean;
+  /** `merged` = retired duplicate ("Birleştir", ADR 016). */
+  status?: string;
+  mergedInto?: string | null;
   lastSeenAt: string;
 };
 type HistoryRow = {
@@ -70,6 +73,9 @@ const actionNames: Record<string, string> = {
   locator_changed: "Locator değişti (onay kaldırıldı)",
   alternative_added: "Önerilen alternatif eklendi",
   pinned: "Suite onayında sabitlendi",
+  merged: "Kopya element birleştirildi",
+  merged_into: "Başka elemente birleştirildi (emekli)",
+  heal_promoted: "Self-healing önerisi birincil yapıldı",
 };
 
 export function locatorLabel(locator: LibraryLocator) {
@@ -89,11 +95,14 @@ export function AiElementEditor({
   element,
   onSaved,
   onClose,
+  onMerged,
 }: {
   projectId: string;
   element: AiElement;
   onSaved: (element: AiElement) => void;
   onClose: () => void;
+  /** The element was retired into `target` ("Birleştir"). */
+  onMerged?: (target: AiElement) => void;
 }) {
   const [base, setBase] = useState(element);
   const [form, setForm] = useState(element);
@@ -340,7 +349,10 @@ export function AiElementEditor({
         ) : (
           <small>Keşifte başka tekil locator bulunmadı.</small>
         )}
-        <small>Alternatifler çalıştırmada otomatik denenmez.</small>
+        <small>
+          Alternatifler yalnız Ayarlar → Self-healing açıksa ve birincil locator
+          hiç bulunamazsa sırayla denenir; önerilen alternatifler asla denenmez.
+        </small>
         {suggestions.length > 0 && (
           <div className="ai-element-suggestions">
             <strong>Önerilen alternatifler ({suggestions.length})</strong>
@@ -396,6 +408,15 @@ export function AiElementEditor({
         </button>
         <small>Sürüm {base.revision}</small>
       </div>
+      {!base.approved && (
+        <MergeElement
+          projectId={projectId}
+          element={base}
+          onMerged={(target) => {
+            onMerged?.(target);
+          }}
+        />
+      )}
       <ElementImpact
         projectId={projectId}
         elementId={element.id}
@@ -446,7 +467,7 @@ const terminal = (status: string) => !["queued", "running"].includes(status);
  * "Etkilenen testler" (ADR 015): latest permanent test versions that pin an
  * older revision of this element; a new version is created only on request.
  */
-function ElementImpact({
+export function ElementImpact({
   projectId,
   elementId,
   revision,
@@ -477,6 +498,7 @@ function ElementImpact({
           status: string;
           result: {
             counts?: { passed: number; failed: number; skipped: number };
+            healedSteps?: number;
           } | null;
         }>(`${root}/test-runs/${run.id}`).then((detail) =>
           setRuns((current) => ({
@@ -485,7 +507,7 @@ function ElementImpact({
               id: run.id,
               status: detail.status,
               counts: detail.result?.counts
-                ? `${detail.result.counts.passed} başarılı · ${detail.result.counts.failed} başarısız · ${detail.result.counts.skipped} atlandı`
+                ? `${detail.result.counts.passed} başarılı · ${detail.result.counts.failed} başarısız · ${detail.result.counts.skipped} atlandı${detail.result.healedSteps ? ` · ${detail.result.healedSteps} adım alternatifle bulundu` : ""}`
                 : undefined,
             },
           })),
@@ -627,6 +649,115 @@ function ElementImpact({
           </li>
         ))}
       </ul>
+      {error && <p role="alert">{error}</p>}
+    </section>
+  );
+}
+
+/**
+ * "Birleştir" (ADR 016): retire this unapproved duplicate into another
+ * element of the same page. An approved target receives the locators as
+ * suggested alternatives, an unapproved one as alternatives.
+ */
+function MergeElement({
+  projectId,
+  element,
+  onMerged,
+}: {
+  projectId: string;
+  element: AiElement;
+  onMerged: (target: AiElement) => void;
+}) {
+  const [candidates, setCandidates] = useState<AiElement[]>([]);
+  const [targetId, setTargetId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const root = `/v1/projects/${projectId}/ai/elements`;
+  useEffect(() => {
+    const search = new URLSearchParams({
+      pageUrl: element.pageUrl,
+      limit: "500",
+    });
+    void api<{ elements: AiElement[] }>(`${root}?${search}`)
+      .then((data) =>
+        setCandidates(
+          data.elements
+            .filter((candidate) => candidate.id !== element.id)
+            // Approved, named elements first: the usual merge target.
+            .sort(
+              (a, b) =>
+                Number(b.approved) - Number(a.approved) ||
+                a.elementKey.localeCompare(b.elementKey),
+            ),
+        ),
+      )
+      .catch((failure) => setError(String(failure)));
+  }, [root, element.id, element.pageUrl]);
+  const target = candidates.find((candidate) => candidate.id === targetId);
+  const merge = async () => {
+    if (!target) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await api<{
+        element: AiElement;
+        added: LibraryLocator[];
+        skipped: number;
+        asSuggestions: boolean;
+      }>(`${root}/${element.id}/merge`, "POST", {
+        expectedRevision: element.revision,
+        targetId: target.id,
+        targetRevision: target.revision,
+      });
+      setMessage(
+        `${element.elementKey} → ${result.element.elementKey} birleştirildi (sürüm ${result.element.revision}). ${result.added.length} locator ${result.asSuggestions ? "önerilen alternatif" : "alternatif"} olarak eklendi${result.skipped ? `, ${result.skipped} sınır nedeniyle eklenmedi` : ""}.`,
+      );
+      onMerged(result.element);
+    } catch (failure) {
+      setError(String(failure));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="ai-element-merge" aria-label="Elementi birleştir">
+      <strong>Birleştir</strong>
+      <small>
+        Bu onaysız kayıt başka bir elementin kopyasıysa birleştirin:
+        locator&apos;ları hedefe taşınır (onaylı hedefte önerilen alternatif
+        olur), bu kayıt silinmeden emekli edilir ve geçmişi korunur.
+      </small>
+      <div className="ai-element-editor-grid">
+        <label className="wide">
+          Hedef element
+          <select
+            aria-label="Birleştirme hedefi"
+            value={targetId}
+            onChange={(event) => setTargetId(event.target.value)}
+          >
+            <option value="">Seçin</option>
+            {candidates.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.elementKey}
+                {candidate.name ? ` · ${candidate.name}` : ""}
+                {candidate.approved ? " · onaylı" : ""} ·{" "}
+                {locatorLabel(candidate.locator)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <button
+        type="button"
+        className="secondary"
+        disabled={busy || !target}
+        onClick={() => void merge()}
+      >
+        {busy ? "Birleştiriliyor…" : "Birleştir"}
+      </button>
+      {message && <p role="status">{message}</p>}
       {error && <p role="alert">{error}</p>}
     </section>
   );

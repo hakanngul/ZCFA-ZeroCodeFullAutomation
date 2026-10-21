@@ -1,5 +1,44 @@
 # Devam noktası — 19 Ekim 2026
 
+## 21 Ekim 2026 — Element kütüphanesi Faz 4: self-healing ve "Birleştir"
+
+Plan `wiggly-plotting-teapot` Faz 4 tamamlandı (plan bitti); ADR 016.
+Migration 012: `project_settings.self_healing` (varsayılan kapalı,
+`GET/PUT /v1/projects/:id/settings`, Ayarlar'da kart), `ai_heal_suggestions`,
+korumalı adımla `ai_page_elements.status`/`merged_into`. Açıkken
+`executeSuite` (suite ve kalıcı test çalıştırmaları) pinli birincil 0 eşleşirse
+pinli revizyonun onaylı alternatiflerini sırayla dener (önerilenler asla);
+ilk tekil eşleşen kullanılır, çoklu eşleşen alternatif iyileştirmeyi durdurur.
+Adım `healed {locator, primary}`, sonuç `healedSteps`/`selfHealing`; ekranlar
+"N adım alternatifle bulundu" gösterir. Geçen iyileşmeler çalıştırma başına
+öneri olur; Elementler'de "Birincil yap" (yeni revizyon, onay korunur, eski
+birincil alternatiflerin sonuna; etki listesi aynı panelde) ve "Yoksay".
+"Birleştir": onaysız kopya aynı sayfadaki hedefe birleşir (onaylı hedefte
+önerilen alternatif, onaysızda alternatif; hedef yeni revizyon), kopya
+`merged` olarak emekli edilir (silinmez, geçmişi korunur, listede yok,
+düzenlenemez); keşif artık önerilen alternatiflerle de eşleştirir. Testler:
+`tests/self-healing.test.ts` (ayar + org izolasyonu, öneri kaydı, Birincil
+yap → revizyon + etki + yeni sürüm, Yoksay, önerilenlerin çözüme girmemesi,
+birleştirme: LOCATOR_IN_USE çözümü, onaylı kaynak reddi, 409/404, emekli
+satır) ve `assistant.test.ts` executor testi (KAPALI → hata, AÇIK → healed,
+çoklu eşleşme/hiç eşleşme → hata, çalışan/çoklu birincil iyileştirilmez).
+Doğrulama: typecheck, format:check, `pnpm test` 45/45, build, `test:e2e`
+13/13. Gerçek kontrol (`.local/my-data`, önce
+`/tmp/zc-my-data-backup-20261021-faz4.sqlite`): `home.input` kopyası
+`login.submit`'e birleştirildi (v7; locator'ları zaten alternatifti, 0 yeni
+öneri). Birincil bilerek `[data-test="login-button-broken"]` yapıldı,
+alternatifler id/data-test/role, yeniden onay (v9), test v3. Self-healing
+KAPALI: 0/7, tümü `ELEMENT_NOT_FOUND`. AÇIK: 7/7, 8 adım `id: login-button`
+ile bulundu, 1 öneri (8 adım). "Birincil yap" → v10 (`id: login-button`
+birincil, birleştirme sayesinde `LOCATOR_IN_USE` yok), etki listesi test v3'ü
+gösterdi; self-healing kapatılıp test v4 oluşturuldu, 7/7 başarılı, 0
+iyileşme. Ayar son durumda kapalı. Kanıt: `docs/evidence/elements/merge.png`,
+`heal-off-fail.png`, `heal-on-pass.png`, `heal-suggestion.png`,
+`heal-promoted.png`, `heal-restored-pass.png`. Sınır: onaylı hedefe
+birleştirme de yeni revizyon ürettiği için bağlı testler fark olmadan
+"güncel olmayan" görünebilir; `inventory.input` (başka sayfada aynı locator)
+birleştirilmedi.
+
 ## 21 Ekim 2026 — Element kütüphanesi Faz 3: locator değişikliği etkisi
 
 Plan `wiggly-plotting-teapot` Faz 3 tamamlandı (Faz 4 başlamadı); ADR 015.
