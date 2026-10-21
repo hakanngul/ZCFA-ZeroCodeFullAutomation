@@ -1,0 +1,258 @@
+{
+  "version": 3,
+  "generatedAt": "2026-10-21T19:24:51.815Z",
+  "framework": "nextjs-app (single route, section-switched SPA)",
+  "devUrl": "http://127.0.0.1:5173",
+  "stack": {
+    "languages": [
+      "typescript"
+    ],
+    "runtime": "node",
+    "packageManager": "pnpm",
+    "buildTool": "next",
+    "repoType": "monorepo-pnpm-workspace",
+    "uiLibraries": [
+      "lucide-react"
+    ],
+    "stateManagement": [
+      "react-state"
+    ],
+    "forms": [],
+    "validation": [
+      "zod"
+    ],
+    "httpClient": [
+      "fetch"
+    ],
+    "styling": [
+      "plain-css"
+    ],
+    "testFrameworks": [
+      "node:test"
+    ],
+    "e2eFrameworks": [
+      "playwright"
+    ],
+    "nodeVersion": "24.x"
+  },
+  "integrations": {
+    "github": {
+      "enabled": false,
+      "mcpServer": null
+    },
+    "jira": {
+      "enabled": false,
+      "mcpServer": null
+    },
+    "azureDevOps": {
+      "enabled": false,
+      "mcpServer": null
+    }
+  },
+  "settingsSnapshot": {
+    "browserEngine": "playwright",
+    "headless": true,
+    "taskDepth": "deep",
+    "maxTasksPerRoute": 4,
+    "authMode": "none",
+    "defaultRole": "admin",
+    "analysisMode": "static (no browser pass; element inventory derived from source)"
+  },
+  "auth": {
+    "mode": "none",
+    "defaultRole": "admin",
+    "credentialSource": null,
+    "note": "Yerel demo oturumu: \"Yerel çalışma alanını aç\" (POST /v1/session/local). Kimlik bilgisi yok.",
+    "rolesUsed": [
+      "admin",
+      "viewer"
+    ],
+    "rolesConfigured": [
+      "admin"
+    ]
+  },
+  "routes": [
+    {
+      "path": "/",
+      "section": "Giriş ve kabuk (karşılama, kenar çubuğu, oturum)",
+      "slug": "giris-ve-kabuk",
+      "sourceFile": "apps/web/app/page.tsx",
+      "fingerprint": "f553111956834a85c49058c112b4e6292f25f2f20bc8ae97cb2b45cdef4fb6c0",
+      "requiresAuth": true,
+      "rolesAllowed": [
+        "admin",
+        "viewer"
+      ],
+      "guards": [
+        "local-demo-session"
+      ],
+      "httpMethods": [
+        "GET"
+      ],
+      "analysisMode": "static",
+      "tasks": [
+        "T01-giris-ve-kabuk-yerel-calisma-alani-ac-as-admin",
+        "T02-giris-ve-kabuk-kenar-cubugu-navigasyon",
+        "T03-giris-ve-kabuk-oturumu-kapat-ve-hata-bandi"
+      ]
+    },
+    {
+      "path": "/",
+      "section": "Genel bakış",
+      "slug": "genel-bakis",
+      "sourceFile": "apps/web/app/page.tsx",
+      "fingerprint": "f553111956834a85c49058c112b4e6292f25f2f20bc8ae97cb2b45cdef4fb6c0",
+      "requiresAuth": true,
+      "rolesAllowed": [],
+      "guards": [
+        "local-demo-session"
+      ],
+      "httpMethods": [
+        "GET"
+      ],
+      "analysisMode": "static",
+      "tasks": [
+        "T04-genel-bakis-ilk-yukleme-ve-kesif",
+        "T05-genel-bakis-baslangic-rotasi-gezinme",
+        "T06-genel-bakis-metrikler-son-hareketler"
+      ]
+    },
+    {
+      "path": "/",
+      "section": "Uygulama modeli",
+      "slug": "uygulama-modeli",
+      "sourceFile": "apps/web/app/page.tsx",
+      "fingerprint": "f553111956834a85c49058c112b4e6292f25f2f20bc8ae97cb2b45cdef4fb6c0",
+      "requiresAuth": true,
+      "rolesAllowed": [
+        "admin"
+      ],
+      "guards": [
+        "local-demo-session"
+      ],
+      "httpMethods": [
+        "GET"
+      ],
+      "analysisMode": "static",
+      "tasks": [
+        "T07-uygulama-modeli-kesif-ve-esleme-onayi-as-admin",
+        "T08-uygulama-modeli-esleme-dogrulamasi",
+        "T09-uygulama-modeli-yeniden-kesif-ve-surumleme"
+      ]
+    },
+    {
+      "path": "/",
+      "section": "Elementler",
+      "slug": "elementler",
+      "sourceFile": "apps/web/app/components/ai-element-list.tsx",
+      "fingerprint": "edd1479bb55f29d0799ed4ba11be0bee83617f18683af5073644e8b8764cdbff",
+      "requiresAuth": true,
+      "rolesAllowed": [],
+      "guards": [
+        "local-demo-session"
+      ],
+      "httpMethods": [
+        "GET"
+      ],
+      "analysisMode": "static",
+      "tasks": [
+        "T10-elementler-ai-element-duzenle-onayla",
+        "T11-elementler-birlestir",
+        "T12-elementler-etki-self-healing",
+        "T13-elementler-demo-bank-kayit-defteri"
+      ]
+    },
+    {
+      "path": "/",
+      "section": "Testler (Test çalışma alanı)",
+      "slug": "test-calisma-alani",
+      "sourceFile": "apps/web/app/page.tsx",
+      "fingerprint": "f553111956834a85c49058c112b4e6292f25f2f20bc8ae97cb2b45cdef4fb6c0",
+      "requiresAuth": true,
+      "rolesAllowed": [
+        "admin"
+      ],
+      "guards": [
+        "local-demo-session"
+      ],
+      "httpMethods": [
+        "GET"
+      ],
+      "analysisMode": "static",
+      "tasks": [
+        "T14-test-calisma-alani-klasik-yayinla-calistir-as-admin",
+        "T15-test-calisma-alani-form-dogrulama",
+        "T16-test-calisma-alani-calistirma-ortami-varyantlar",
+        "T17-test-calisma-alani-kalici-ai-testleri"
+      ]
+    },
+    {
+      "path": "/",
+      "section": "Çalıştırmalar",
+      "slug": "calistirmalar",
+      "sourceFile": "apps/web/app/components/reporting.tsx",
+      "fingerprint": "2d4df85ff281741c4da13e2b1d5fe34c511de91eec9971c08fff20b3317935a3",
+      "requiresAuth": true,
+      "rolesAllowed": [],
+      "guards": [
+        "local-demo-session"
+      ],
+      "httpMethods": [
+        "GET"
+      ],
+      "analysisMode": "static",
+      "tasks": [
+        "T18-calistirmalar-tum-calistirmalar-filtre",
+        "T19-calistirmalar-html-rapor-indir",
+        "T20-calistirmalar-klasik-ayrinti-kanit",
+        "T21-calistirmalar-kalici-ai-calistirmalari"
+      ]
+    },
+    {
+      "path": "/",
+      "section": "AI Test Assistant",
+      "slug": "ai-test-assistant",
+      "sourceFile": "apps/web/app/components/ai-assistant.tsx",
+      "fingerprint": "bf968454ca6537f40e6d87e1c69469f3b1ddd4b9beff6bf66235eb96ee5a6152",
+      "requiresAuth": true,
+      "rolesAllowed": [
+        "admin"
+      ],
+      "guards": [
+        "local-demo-session"
+      ],
+      "httpMethods": [
+        "GET"
+      ],
+      "analysisMode": "static",
+      "tasks": [
+        "T22-ai-test-assistant-chat-to-suite-run",
+        "T23-ai-test-assistant-composer-validation-target-auth",
+        "T24-ai-test-assistant-model-comparison",
+        "T25-ai-test-assistant-quality-promote-element-errors"
+      ]
+    },
+    {
+      "path": "/",
+      "section": "Ayarlar",
+      "slug": "ayarlar",
+      "sourceFile": "apps/web/app/components/ai-assistant.tsx",
+      "fingerprint": "bf968454ca6537f40e6d87e1c69469f3b1ddd4b9beff6bf66235eb96ee5a6152",
+      "requiresAuth": true,
+      "rolesAllowed": [],
+      "guards": [
+        "local-demo-session"
+      ],
+      "httpMethods": [
+        "GET"
+      ],
+      "analysisMode": "static",
+      "tasks": [
+        "T26-ayarlar-yetkili-hedef-siteler",
+        "T27-ayarlar-test-verileri",
+        "T28-ayarlar-self-healing",
+        "T29-ayarlar-ai-provider"
+      ]
+    }
+  ]
+}

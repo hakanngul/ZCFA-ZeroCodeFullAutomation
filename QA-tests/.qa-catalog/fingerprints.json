@@ -1,0 +1,21 @@
+{
+  "apps/web/app/page.tsx": "f553111956834a85c49058c112b4e6292f25f2f20bc8ae97cb2b45cdef4fb6c0",
+  "apps/web/app/lib/api.ts": "f63b25e74d11843f3fa44989028695ed70715d4fb745781a02eb019f5a961718",
+  "apps/web/app/layout.tsx": "a95a869ffbacd7fe04c8918e6a12955e331c4537bf1f08fe621ccf244f59ab98",
+  "apps/web/app/components/ai-assistant.tsx": "bf968454ca6537f40e6d87e1c69469f3b1ddd4b9beff6bf66235eb96ee5a6152",
+  "apps/web/app/components/ai-element-editor.tsx": "75d24c1cba287d17d4f6a33b91000d455f146f0900f3ef4717794e9d2045cb58",
+  "apps/web/app/components/ai-element-list.tsx": "edd1479bb55f29d0799ed4ba11be0bee83617f18683af5073644e8b8764cdbff",
+  "apps/web/app/components/ai-suite-list.tsx": "618143db50b0cbea1b7875d0fb39ebadb12d27041face4a168c01fe57bc87996",
+  "apps/web/app/components/element-registry.tsx": "f00e7723fd9fd56779cbe9ecc0c71f43e263a1d4b4822ff52de6eab1b4a0008a",
+  "apps/web/app/components/model-comparison.tsx": "12e4c501225d554f5c827f769432a9a9c95bfaff420464da220cf4154dd5d602",
+  "apps/web/app/components/promoted-tests.tsx": "9476be56ce879a1cae773c82a06be03ce869aaf8bb70c7aa958141493d400100",
+  "apps/web/app/components/quality-findings.tsx": "0a501195315ad0df82c762293d2e4a01bbe925d1321103af7e2384cb9e214b9b",
+  "apps/web/app/components/reporting.tsx": "2d4df85ff281741c4da13e2b1d5fe34c511de91eec9971c08fff20b3317935a3",
+  "apps/web/app/components/self-healing-setting.tsx": "6fac448ac82fc74df15f25dff19fdd987cab4c87d5f0ff14f5fdd3e2973650bc",
+  "apps/web/app/components/test-variables.tsx": "c62c471bd66f80ca503851b293d22ca27149a50866ab0c8b049c47aabe582aa2",
+  "apps/api/src/app.ts": "2dc8d50991c194f5af912ef3e6d64650f6a761fd54b975b200165fd5c631b4ad",
+  "apps/api/src/assistant.ts": "a95cec9cbeb40d0884c3f16fdb72c3b117b8e7c6298a6f02d6be6a116bcbc026",
+  "apps/api/src/reporting.ts": "746675e6acdc505925a3b15fbf292c7e4a63797194238d461988821906a222ec",
+  "apps/api/src/test-variables.ts": "1634f4597a6ced258624f681600bae1aa1ce7585598f87729b7be337d6bd324c",
+  "apps/api/src/promoted-tests.ts": "ec8edd0f534e329f0d8e684a4cb1212e1cec8211b1b4cc77dd5f60f55e66bffc"
+}
