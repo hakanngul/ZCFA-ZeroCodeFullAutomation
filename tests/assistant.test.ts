@@ -26,7 +26,7 @@ async function until<T>(
 }
 test(
   "AI provider, browser inspection, approved suite and worker results are real and scoped",
-  { timeout: 90000 },
+  { timeout: 240000 },
   async () => {
     const dir = mkdtempSync(join(tmpdir(), "zc-ai-test-"));
     const previousAllow = process.env.ZC_AI_ALLOW_LOCAL_PROVIDER,
@@ -36,6 +36,48 @@ test(
     const provider = Fastify(),
       seenModels: string[] = [];
     let sentMalformed = false;
+    const corrections: string[] = [];
+    const loginStep = (value: string, extra?: Record<string, string>) => ({
+      kind: extra ? "fill" : "click",
+      locator: { kind: "testId", value },
+      ...extra,
+    });
+    const explorationSteps: Record<string, unknown[]> = {
+      "explore-model": [
+        loginStep("login-email", { value: "qa@example.test" }),
+        loginStep("login-password", { value: "local-fixture-only" }),
+        loginStep("login-submit"),
+      ],
+      "invent-model": [
+        loginStep("login-email", { value: "invented@example.test" }),
+      ],
+      "loop-model": Array.from({ length: 20 }, () => loginStep("login-email")),
+    };
+    const dashboardSuite = (locator: string) => ({
+      title: "Demo giriş ve dashboard suite",
+      targetUrl: "http://127.0.0.1:4100/login",
+      scenarios: [
+        {
+          title: "Geçerli giriş bakiyeyi gösterir",
+          category: "positive",
+          actions: [
+            loginStep("login-email", { value: "qa@example.test" }),
+            loginStep("login-password", { value: "local-fixture-only" }),
+            loginStep("login-submit"),
+            {
+              kind: "assertVisible",
+              locator: { kind: "testId", value: locator },
+            },
+            {
+              kind: "assertText",
+              locator: { kind: "testId", value: "dashboard-balance" },
+              expected: "1.250,00 TL",
+            },
+            { kind: "assertUrl", expected: "http://127.0.0.1:4100/dashboard" },
+          ],
+        },
+      ],
+    });
     provider.get("/v1/models", async (request, reply) => {
       if (request.headers.authorization !== "Bearer secret-test-key")
         return reply.code(401).send({ error: "unauthorized" });
@@ -48,6 +90,17 @@ test(
         model: string;
         messages: { content: string }[];
       };
+      if (body.messages[0]?.content.startsWith("You explore")) {
+        const state = JSON.parse(body.messages[1]!.content) as {
+          path: unknown[];
+        };
+        const step = explorationSteps[body.model]?.[state.path.length] ?? {
+          done: true,
+        };
+        return { choices: [{ message: { content: JSON.stringify(step) } }] };
+      }
+      if (body.messages.at(-1)?.content.includes("were not observed"))
+        corrections.push(body.model);
       if (body.model === "slow-model")
         await new Promise((r) => setTimeout(r, 1500));
       seenModels.push(body.model);
@@ -70,6 +123,16 @@ test(
           choices: [{ message: { content: '{"title":"Eksik suite"}' } }],
         };
       }
+      if (body.model === "explore-model" || body.model === "unobserved-model")
+        return {
+          choices: [
+            {
+              message: {
+                content: JSON.stringify(dashboardSuite("dashboard-heading")),
+              },
+            },
+          ],
+        };
       if (body.model === "bad-model")
         return {
           choices: [{ message: { content: '{"title":"Eksik suite"}' } }],
@@ -432,6 +495,101 @@ test(
           .elements.length,
         4,
       );
+      const analyze = async (model: string, prompt: string) => {
+        const queued = await call(
+          "POST",
+          `/v1/projects/${demoProject}/ai/messages`,
+          {
+            prompt,
+            targetUrl: "http://127.0.0.1:4100/login",
+            providerId: saved.body.id,
+            model,
+          },
+        );
+        assert.equal(queued.status, 202);
+        return until(async () => {
+          const response = await call(
+            "GET",
+            `/v1/projects/${demoProject}/ai/conversations/${queued.body.conversationId}`,
+          );
+          const draft = response.body.drafts[0];
+          return draft?.status === "ready" || draft?.status === "failed"
+            ? { draft, messages: response.body.messages }
+            : null;
+        }, 60000);
+      };
+      const explored = await analyze(
+        "explore-model",
+        "qa@example.test ve local-fixture-only ile giriş yap, dashboard bakiyesini doğrula",
+      );
+      assert.equal(explored.draft.status, "ready");
+      assert.equal(explored.draft.inspection.pages.length, 2);
+      assert.equal(explored.draft.inspection.path.length, 3);
+      assert.equal(
+        explored.draft.inspection.pages[1].url,
+        "http://127.0.0.1:4100/dashboard",
+      );
+      assert.equal(
+        explored.messages.some((m: { content: string }) =>
+          m.content.startsWith("2 sayfa incelendi"),
+        ),
+        true,
+      );
+      assert.equal(
+        (
+          await call("GET", `/v1/projects/${demoProject}/ai/elements`)
+        ).body.elements.some(
+          (e: { pageUrl: string; locatorValue: string }) =>
+            e.pageUrl === "http://127.0.0.1:4100/dashboard" &&
+            e.locatorValue === "dashboard-heading",
+        ),
+        true,
+      );
+      const exploredSuite = await call(
+        "POST",
+        `/v1/projects/${demoProject}/ai/drafts/${explored.draft.id}/save`,
+        explored.draft.definition,
+      );
+      assert.equal(exploredSuite.status, 201);
+      const exploredRun = await call(
+        "POST",
+        `/v1/projects/${demoProject}/ai/suites/${exploredSuite.body.id}/runs`,
+        {},
+      );
+      const exploredResult = await until(async () => {
+        const response = await call(
+          "GET",
+          `/v1/projects/${demoProject}/ai/runs/${exploredRun.body.id}`,
+        );
+        return ["passed", "failed"].includes(response.body.status)
+          ? response.body
+          : null;
+      });
+      assert.equal(exploredResult.status, "passed");
+      const unobserved = await analyze(
+        "unobserved-model",
+        "Giriş sonrası dashboard başlığını doğrula",
+      );
+      assert.equal(unobserved.draft.error_code, "UNOBSERVED_LOCATOR");
+      assert.equal(
+        seenModels.filter((m) => m === "unobserved-model").length,
+        2,
+      );
+      assert.deepEqual(corrections, ["unobserved-model"]);
+      const invented = await analyze(
+        "invent-model",
+        "Geçerli kullanıcıyla giriş yap ve dashboard'u doğrula",
+      );
+      assert.equal(invented.draft.error_code, "EXPLORATION_VALUE");
+      assert.equal(seenModels.includes("invent-model"), false);
+      const looped = await analyze(
+        "loop-model",
+        "Giriş sayfasındaki alanları keşfet",
+      );
+      assert.equal(looped.draft.status, "ready");
+      assert.equal(looped.draft.inspection.path.length, 12);
+      assert.equal(looped.draft.inspection.stopped, "STEP_LIMIT");
+      assert.equal(looped.draft.inspection.pages.length, 1);
       assert.equal(
         (
           await call(

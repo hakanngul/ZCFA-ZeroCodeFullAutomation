@@ -23,7 +23,12 @@ type Draft = {
   status: string;
   error_code: string | null;
   target_url: string;
-  inspection: { title: string; elements: unknown[] } | null;
+  inspection: {
+    title: string;
+    elements: unknown[];
+    pages: { title: string; url: string; elements: unknown[] }[];
+    path: unknown[];
+  } | null;
   definition: AiSuite | null;
 };
 type Suite = { id: string; definition: AiSuite };
@@ -346,10 +351,20 @@ export function AiAssistant({
                   </strong>
                   {d.error_code && <p>{d.error_code}</p>}
                   {d.inspection && (
-                    <p>
-                      {d.inspection.title} · {d.inspection.elements.length} DOM
-                      öğesi
-                    </p>
+                    <>
+                      <p>
+                        {d.inspection.pages.length} sayfa ·{" "}
+                        {d.inspection.path.length} keşif adımı ·{" "}
+                        {d.inspection.elements.length} DOM öğesi
+                      </p>
+                      <ul aria-label="İncelenen sayfalar">
+                        {d.inspection.pages.map((p) => (
+                          <li key={p.url}>
+                            {p.title || p.url} · {p.elements.length} öğe
+                          </li>
+                        ))}
+                      </ul>
+                    </>
                   )}
                   {d.definition && (
                     <>

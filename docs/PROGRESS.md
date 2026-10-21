@@ -1,5 +1,23 @@
 # Devam noktası — 19 Ekim 2026
 
+## 21 Ekim 2026 — AI planlayıcıya çok sayfalı keşif
+
+`inspect` yerine `exploreTarget` geldi: worker hedef sayfayı gözler, modelden
+tek seferde bir `fill`/`click` keşif adımı ya da `{"done":true}` ister, adımı
+aynı Chromium context'inde tekil locator şartıyla uygular ve yeni sayfayı
+gözler. Sınırlar 5 sayfa / 12 adım / 120 saniye ve aynı origin; `fill` değeri
+kullanıcının isteğinde birebir yoksa `EXPLORATION_VALUE` ile durur. Gözlem
+şekli `{pages, path, stopped?}` oldu; eski tek sayfa taslaklar `pages[0]`
+olarak okunur (revise kırılmaz). Gözlem seçicisine `[data-testid]` eklendi.
+`generateSuite` tüm sayfaların locator birleşimini kullanıyor ve
+`UNOBSERVED_LOCATOR` artık tek düzeltme çağrısına dahil. Senaryo başına adım
+sınırı 8 → 20. Her sayfanın öğeleri kendi URL'iyle `ai_page_elements`'e
+yazılıyor; taslak kartı incelenen sayfaları listeliyor. Mock provider testleri:
+login → dashboard keşfi ve suite'in gerçek Chromium'da geçmesi, gözlenmeyen
+locator için 1 düzeltme sonrası hata, uydurulmuş `fill` değerinin reddi, 12
+adım sınırında durma. Sıradaki adım: Evren provider + SauceDemo ile gerçek uçtan
+uca doğrulama ve `docs/evidence` görüntüleri.
+
 ## 20 Ekim 2026 — AI şema düzeltmesi ve element kaydı
 
 `PROVIDER_FORMAT` için şema doğrulama hataları kısa alan kodlarıyla modele

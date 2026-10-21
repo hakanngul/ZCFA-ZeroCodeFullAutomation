@@ -8,7 +8,10 @@ import { z } from "zod";
 import { Store } from "../../../packages/storage/src/index";
 import { DomainError, type Actor } from "../../../packages/domain/src/index";
 import { aiSuiteSchema } from "../../../packages/assistant/src/spec";
-import { authorizedTarget } from "../../../packages/assistant/src/agent";
+import {
+  authorizedTarget,
+  normalizeInspection,
+} from "../../../packages/assistant/src/agent";
 import {
   encrypt,
   providerRequest,
@@ -371,7 +374,7 @@ export function registerAssistant(
         .map((row) => ({
           ...row,
           inspection: row.inspection
-            ? JSON.parse(row.inspection as string)
+            ? normalizeInspection(JSON.parse(row.inspection as string))
             : null,
           definition: row.definition
             ? JSON.parse(row.definition as string)
@@ -508,9 +511,9 @@ export function registerAssistant(
       const suite = aiSuiteSchema.parse(request.body);
       if (suite.targetUrl !== draft.target_url)
         throw new DomainError("TARGET_BLOCKED", "Hedef değiştirilemez.");
-      const inspected = JSON.parse(draft.inspection as string) as {
-        elements: { locator: unknown }[];
-      };
+      const inspected = normalizeInspection(
+        JSON.parse(draft.inspection as string),
+      );
       const observed = new Set(
         inspected.elements.map((e) => JSON.stringify(e.locator)),
       );
@@ -529,7 +532,7 @@ export function registerAssistant(
           )
             throw new DomainError(
               "UNOBSERVED_LOCATOR",
-              "Locator incelenen sayfada yok.",
+              "Locator incelenen sayfalarda yok.",
             );
           if (
             action.kind === "assertUrl" &&
@@ -682,7 +685,7 @@ export function registerAssistant(
           .object({
             id: z.uuid(),
             index: z.coerce.number().int().min(0).max(7),
-            step: z.coerce.number().int().min(0).max(7),
+            step: z.coerce.number().int().min(0).max(19),
           })
           .parse(request.params);
       const row = store.db

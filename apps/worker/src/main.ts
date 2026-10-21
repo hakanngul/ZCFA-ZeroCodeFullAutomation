@@ -10,8 +10,9 @@ import { DomainError, locatorSchema } from "../../../packages/domain/src/index";
 import {
   authorizedTarget,
   checkTargetNetwork,
-  inspect,
+  exploreTarget,
   generateSuite,
+  normalizeInspection,
   executeSuite,
 } from "../../../packages/assistant/src/agent";
 import type { Provider } from "../../../packages/assistant/src/provider";
@@ -89,32 +90,41 @@ while (!stopping) {
         store.authorizedOrigins(job.org_id),
       );
       await checkTargetNetwork(target);
-      const inspection = await inspect(browser, target);
+      const prompt = JSON.parse(job.payload).prompt as string;
+      const inspection = await exploreTarget(
+        browser,
+        target,
+        provider,
+        draft.model as string,
+        prompt,
+      );
       store.transaction(() => {
         const now = new Date().toISOString();
-        const pageUrl = new URL(inspection.url);
-        pageUrl.search = "";
-        pageUrl.hash = "";
         const save = store.db.prepare(
           `INSERT INTO ai_page_elements VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(org_id,project_id,page_url,locator_kind,locator_value)
            DO UPDATE SET tag=excluded.tag,label=excluded.label,role=excluded.role,input_type=excluded.input_type,last_seen_at=excluded.last_seen_at`,
         );
-        for (const element of inspection.elements)
-          save.run(
-            randomUUID(),
-            job.org_id,
-            job.project_id,
-            pageUrl.href,
-            element.tag,
-            element.text,
-            element.role,
-            element.type,
-            element.locator.kind,
-            element.locator.value,
-            now,
-            now,
-          );
+        for (const page of inspection.pages) {
+          const pageUrl = new URL(page.url);
+          pageUrl.search = "";
+          pageUrl.hash = "";
+          for (const element of page.elements)
+            save.run(
+              randomUUID(),
+              job.org_id,
+              job.project_id,
+              pageUrl.href,
+              element.tag,
+              element.text,
+              element.role,
+              element.type,
+              element.locator.kind,
+              element.locator.value,
+              now,
+              now,
+            );
+        }
         store.db
           .prepare("UPDATE ai_drafts SET inspection=? WHERE id=? AND org_id=?")
           .run(JSON.stringify(inspection), job.id, job.org_id);
@@ -122,7 +132,7 @@ while (!stopping) {
       const suite = await generateSuite(
         provider,
         draft.model as string,
-        JSON.parse(job.payload).prompt,
+        prompt,
         target,
         inspection,
       );
@@ -149,7 +159,7 @@ while (!stopping) {
             randomUUID(),
             draft.conversation_id,
             "assistant",
-            `Sayfa incelendi: ${inspection.elements.length} element. ${suite.scenarios.length} senaryo taslağı hazır. Kaydetmeden önce düzenleyip onaylayın.`,
+            `${inspection.pages.length} sayfa incelendi (${inspection.path.length} keşif adımı, ${normalizeInspection(inspection).elements.length} element). ${suite.scenarios.length} senaryo taslağı hazır. Kaydetmeden önce düzenleyip onaylayın.`,
             new Date().toISOString(),
           );
         store.db
@@ -207,9 +217,9 @@ while (!stopping) {
                           code: r.code,
                           steps: r.steps,
                         })),
-                      observedElements: JSON.parse(
-                        original!.inspection as string,
-                      ).elements.map((e: { locator: unknown }) => e.locator),
+                      observedElements: normalizeInspection(
+                        JSON.parse(original!.inspection as string),
+                      ).elements.map((e) => e.locator),
                     }),
                   },
                 ],

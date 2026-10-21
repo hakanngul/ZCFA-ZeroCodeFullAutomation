@@ -21,6 +21,8 @@ test(
       const body = request.body as { messages: { content: string }[] };
       if (body.messages[0]?.content === "Reply OK")
         return { choices: [{ message: { content: "OK" } }] };
+      if (body.messages[0]?.content.startsWith("You explore"))
+        return { choices: [{ message: { content: '{"done":true}' } }] };
       return {
         choices: [
           {

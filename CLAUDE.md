@@ -37,7 +37,7 @@ Paketler (`packages/*`, workspace içi göreli import ile kullanılır):
 - `domain`: Zod şemaları, `CanonicalTest`/`AppModel`, deterministik compiler (model → execution plan), business/flow/technical projeksiyonları, locator tipleri.
 - `storage`: Node SQLite; şema `infra/migrations/00N_*.sql` dosyalarından `index.ts` içinde sırayla yüklenir — yeni migration eklerken oraya da kaydet. Lease ve terminal result CAS burada.
 - `runner`: pasif demo discovery + allowlist'li Playwright yorumlayıcısı (kullanıcı JS'i çalıştırılmaz; yalnız typed adımlar).
-- `assistant`: OpenAI-compatible provider istemcisi (`provider.ts`), suite şeması (`spec.ts`), planlayıcı/agent (`agent.ts`): hedef sayfa DOM'unu gözlemle → modele gönder → yapılandırılmış suite taslağı → şema hatasında en fazla 1 düzeltme çağrısı.
+- `assistant`: OpenAI-compatible provider istemcisi (`provider.ts`), suite şeması (`spec.ts`), planlayıcı/agent (`agent.ts`): hedefi model yönetimli sınırlı keşifle gözlemle → modele gönder → yapılandırılmış suite taslağı → şema hatasında en fazla 1 düzeltme çağrısı.
 
 Önemli ayrımlar:
 
@@ -46,7 +46,7 @@ Paketler (`packages/*`, workspace içi göreli import ile kullanılır):
 - Hedef yetkilendirme: varsayılan yalnız `http://127.0.0.1:4100`; harici HTTPS origin'ler DB'deki listeden her işlemde okunur (yeniden başlatma gerekmez). Worker içerik/kaynak isteklerini aynı origin'e kısıtlar, diğer istek ve WebSocket'leri engeller.
 - Provider API anahtarı SQLite'ta AES-256-GCM ile şifreli; tarayıcıya geri dönmez. `.sqlite` ve `assistant.key` birlikte korunmalı.
 - Oturum yerel demo oturumudur (gerçek auth değil); loopback dışına açma.
-- Bilinen sınır: AI planlayıcı yalnız başlangıç sayfası DOM'unu inceler; login sonrası çok sayfalı akışlar desteklenmez.
+- AI planlayıcı `exploreTarget` ile sınırlı çok sayfalı keşif yapar (≤5 sayfa, ≤12 adım, ≤120 s, aynı origin; `fill` değeri prompt'ta birebir geçmeli). `ai_drafts.inspection` şekli `{pages, path, stopped?}`; eski tek sayfa şekli `normalizeInspection` ile `pages[0]`'a sarılır.
 
 Testler: `tests/support.ts` ortak fixture/model yardımcıları; `tests/fixtures/server.ts` demo hedef (Demo Bank) sunucusu. `assistant-ui` ve `e2e` testleri gerçek tarayıcı kullanır.
 

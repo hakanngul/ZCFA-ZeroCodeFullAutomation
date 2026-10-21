@@ -129,9 +129,17 @@ suite için modelden hata önerisi istenir; suite yeni taslak olarak düzeltilip
 tekrar onaylanabilir. Kod çalıştırma, otomatik locator değiştirme ve sınırsız
 agent döngüsü yoktur.
 
-AI planlayıcı şu anda yalnız başlangıç sayfasının DOM'unu inceler. Girişten
-sonra açılan sepet ve ödeme sayfalarındaki yeni locator'ları keşfetmediği için
-tek promptla tam sipariş akışı henüz desteklenmez.
+AI planlayıcı hedef sayfadan başlayıp sınırlı bir keşif döngüsü yürütür: model
+her turda gözlenen öğelerden tek bir `fill`/`click` adımı ya da `{"done":true}`
+döndürür, worker adımı aynı Chromium context'inde uygular ve yeni sayfayı
+gözler. Sınırlar: en fazla 5 sayfa, 12 keşif adımı, 120 saniye, yalnız aynı
+origin. `fill` değeri kullanıcının isteğinde birebir geçmiyorsa (ör. uydurulmuş
+kimlik bilgisi) analiz `EXPLORATION_VALUE` ile durur; gözlenmeyen locator
+`UNOBSERVED_LOCATOR` olur. Suite taslağı tüm incelenen sayfaların birleşik
+locator kümesini kullanır, her senaryo yine `targetUrl`'den başlar ve keşif
+yolunu tekrarlar (senaryo başına en fazla 20 adım). Gözlenmeyen locator önerisi
+bir düzeltme çağrısıyla modele geri bildirilir. Sayfa başına en fazla 60 öğe
+gözlenir; iframe, yeni sekme ve dosya yükleme akışları keşfedilmez.
 
 Hedef varsayılan olarak yalnız `http://127.0.0.1:4100` demo origin'idir.
 Harici HTTPS siteleri **Ayarlar → Test edilecek siteler** listesine ekle; URL

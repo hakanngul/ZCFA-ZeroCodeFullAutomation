@@ -37,7 +37,7 @@ export const aiSuiteSchema = z
           .object({
             title: z.string().trim().min(3).max(120),
             category: z.enum(["positive", "negative", "edge"]),
-            actions: z.array(aiActionSchema).min(1).max(8),
+            actions: z.array(aiActionSchema).min(1).max(20),
           })
           .strict(),
       )
