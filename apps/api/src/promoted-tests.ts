@@ -1,7 +1,11 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { Store } from "../../../packages/storage/src/index";
+import {
+  resolveElementPins,
+  Store,
+  suitePins,
+} from "../../../packages/storage/src/index";
 import { DomainError, type Actor } from "../../../packages/domain/src/index";
 import { aiSuiteSchema } from "../../../packages/assistant/src/spec";
 import {
@@ -118,7 +122,24 @@ export function registerPromotedTests(
               )
               .get(testId)!.r,
           ) + 1;
+        // Pinned library elements must still be approved when promoting.
+        const resolved = resolveElementPins(
+          store.db,
+          user.orgId,
+          projectId,
+          suitePins(store.db, user.orgId, id),
+        );
+        const bindings = Object.entries(resolved).map(([key, bound]) => {
+          if ("unavailable" in bound)
+            throw new DomainError(
+              "ELEMENT_UNAVAILABLE",
+              `Element kullanılamıyor (${bound.unavailable}): ${key}`,
+              409,
+            );
+          return bound;
+        });
         const test = buildPromotedTest({
+          bindings,
           testId,
           revision,
           orgId: user.orgId,

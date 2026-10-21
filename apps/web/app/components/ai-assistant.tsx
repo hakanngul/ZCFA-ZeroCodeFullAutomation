@@ -50,7 +50,45 @@ type Draft = {
     stopped?: { reason: string; message: string; step?: ExplorationStep };
   } | null;
   definition: AiSuite | null;
+  /** Library keys used by the draft → name (null: not in the library). */
+  elementRefs?: Record<
+    string,
+    { name: string; approved: boolean; revision: number } | null
+  >;
 };
+type ElementRefs = NonNullable<Draft["elementRefs"]>;
+type SuiteAction = AiSuite["scenarios"][number]["actions"][number];
+/** Element name (key) for library references, the locator otherwise. */
+function targetText(
+  target: {
+    element?: string;
+    elementName?: string;
+    locator?: ExplorationLocator;
+  },
+  refs: ElementRefs = {},
+) {
+  if (target.element) {
+    const name = target.elementName ?? refs[target.element]?.name;
+    return name ? `${name} (${target.element})` : target.element;
+  }
+  return target.locator ? locatorText(target.locator) : "";
+}
+function actionText(action: SuiteAction, refs: ElementRefs) {
+  const target =
+    "element" in action || "locator" in action
+      ? targetText(
+          action as { element?: string; locator?: ExplorationLocator },
+          refs,
+        )
+      : "";
+  if (action.kind === "fill") return `“${target}” alanına “${action.value}”`;
+  if (action.kind === "click") return `“${target}” tıkla`;
+  if (action.kind === "assertVisible") return `“${target}” görünür`;
+  if (action.kind === "assertText")
+    return `“${target}” metni = “${action.expected}”`;
+  if (action.kind === "assertUrl") return `URL = ${shortUrl(action.expected)}`;
+  return action.kind;
+}
 const draftTitles: Record<string, string> = {
   queued: "Sıraya alındı…",
   running: "Sayfa keşfediliyor…",
@@ -109,6 +147,9 @@ type Run = {
         message?: string;
         findings?: Findings;
         screenshot?: { filename: string; sha256: string };
+        element?: string;
+        elementName?: string;
+        locator?: ExplorationLocator;
       }[];
       screenshot?: { filename: string; sha256: string };
     }[];
@@ -534,9 +575,25 @@ export function AiAssistant({
                     <>
                       <h3>{d.definition.title}</h3>
                       {d.definition.scenarios.map((s, i) => (
-                        <p key={i}>
-                          {s.category} · {s.title} · {s.actions.length} adım
-                        </p>
+                        <details key={i} className="ai-scenario-steps">
+                          <summary>
+                            {s.category} · {s.title} · {s.actions.length} adım
+                          </summary>
+                          <ol>
+                            {s.actions.map((action, n) => (
+                              <li
+                                key={n}
+                                className={
+                                  "element" in action && action.element
+                                    ? "ai-element-ref"
+                                    : undefined
+                                }
+                              >
+                                {actionText(action, d.elementRefs ?? {})}
+                              </li>
+                            ))}
+                          </ol>
+                        </details>
                       ))}
                       {editingDraft === d.id ? (
                         <>
@@ -590,7 +647,11 @@ export function AiAssistant({
                       {r.code && <p>Hata: {r.code}</p>}
                       {r.steps.map((step, n) => (
                         <div key={n} className="ai-step">
-                          {step.kind}: {step.status} {step.code ?? ""}{" "}
+                          {step.kind}
+                          {step.element || step.locator
+                            ? ` · ${targetText(step)}`
+                            : ""}
+                          : {step.status} {step.code ?? ""}{" "}
                           {step.message ? `— ${step.message} ` : ""}
                           {step.screenshot && (
                             <a

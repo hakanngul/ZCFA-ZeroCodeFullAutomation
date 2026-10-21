@@ -40,6 +40,8 @@ type RunDetail = RunRow & {
         code?: string;
         message?: string;
         findings?: Findings;
+        element?: string;
+        elementName?: string;
       }[];
       screenshot?: { sha256: string };
     }[];
@@ -295,7 +297,7 @@ export function PromotedRuns({
                 {r.steps
                   .map(
                     (s) =>
-                      `${s.kind}: ${s.status}${s.code ? ` (${s.code})` : ""}${s.message ? ` — ${s.message}` : ""}`,
+                      `${s.kind}${s.element ? ` · ${s.elementName ? `${s.elementName} (${s.element})` : s.element}` : ""}: ${s.status}${s.code ? ` (${s.code})` : ""}${s.message ? ` — ${s.message}` : ""}`,
                   )
                   .join(" → ")}
               </small>

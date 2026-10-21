@@ -6,17 +6,25 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { z } from "zod";
 import {
+  acceptSuggestedAlternative,
+  acceptSuggestionSchema,
   aiElement,
   aiElementHistory,
   aiElementUpdateSchema,
   aiElementView,
+  pinApprovedElements,
+  saveSuitePins,
   Store,
+  suitePins,
   updateAiElement,
 } from "../../../packages/storage/src/index";
 import { DomainError, type Actor } from "../../../packages/domain/src/index";
 import {
+  actionTarget,
   aiSuiteSchema,
+  suiteElementKeys,
   suiteLimits,
+  type AiSuite,
 } from "../../../packages/assistant/src/spec";
 import {
   authorizedTarget,
@@ -272,6 +280,66 @@ export function registerAssistant(
       history: aiElementHistory(store.db, user.orgId, projectId, id),
     };
   });
+  // Observation suggestions of an approved element → alternative (ADR 014).
+  app.post(
+    "/v1/projects/:projectId/ai/elements/:id/suggestions/accept",
+    async (request) => {
+      const { user, projectId } = scoped(request, true);
+      const { id } = elementParams.parse(request.params);
+      const input = acceptSuggestionSchema.parse(request.body);
+      const result = store.transaction(() => {
+        const accepted = acceptSuggestedAlternative(
+          store.db,
+          user,
+          projectId,
+          id,
+          input,
+        );
+        store.audit(user, projectId, "ai_element.alternative_added", id);
+        return accepted;
+      });
+      return {
+        element: result.element,
+        history: aiElementHistory(store.db, user.orgId, projectId, id),
+      };
+    },
+  );
+  /** Names of the library keys a suite uses (null = no such element). */
+  function elementRefs(
+    user: Actor,
+    projectId: string,
+    suite: AiSuite | null,
+  ): Record<
+    string,
+    { name: string; approved: boolean; revision: number } | null
+  > {
+    if (!suite) return {};
+    let origin: string;
+    try {
+      origin = new URL(suite.targetUrl).origin;
+    } catch {
+      return {};
+    }
+    const find = store.db.prepare(
+      "SELECT name,approved,revision FROM ai_page_elements WHERE org_id=? AND project_id=? AND origin=? AND element_key=?",
+    );
+    return Object.fromEntries(
+      suiteElementKeys(suite).map((key) => {
+        const row = find.get(user.orgId, projectId, origin, key) as
+          { name: string; approved: number; revision: number } | undefined;
+        return [
+          key,
+          row
+            ? {
+                name: row.name,
+                approved: row.approved === 1,
+                revision: row.revision,
+              }
+            : null,
+        ];
+      }),
+    );
+  }
   app.post("/v1/ai/authorized-origins", async (request, reply) => {
     const user = actor(request, true);
     const { url } = targetOriginInput.parse(request.body);
@@ -518,17 +586,21 @@ export function registerAssistant(
           "SELECT d.*,c.comparison_id,c.position FROM ai_drafts d LEFT JOIN ai_comparison_drafts c ON c.draft_id=d.id WHERE d.conversation_id=? AND d.org_id=? AND d.project_id=? ORDER BY d.created_at DESC,c.position",
         )
         .all(id, user.orgId, projectId)
-        .map((row) => ({
-          ...row,
-          inspection: row.inspection
-            ? maskInspection(
-                normalizeInspection(JSON.parse(row.inspection as string)),
-              )
-            : null,
-          definition: row.definition
-            ? JSON.parse(row.definition as string)
-            : null,
-        })),
+        .map((row) => {
+          const definition = row.definition
+            ? (JSON.parse(row.definition as string) as AiSuite)
+            : null;
+          return {
+            ...row,
+            inspection: row.inspection
+              ? maskInspection(
+                  normalizeInspection(JSON.parse(row.inspection as string)),
+                )
+              : null,
+            definition,
+            elementRefs: elementRefs(user, projectId, definition),
+          };
+        }),
       runs: store.db
         .prepare(
           "SELECT r.id,r.status,r.result,r.created_at FROM ai_suite_runs r JOIN ai_suites s ON s.id=r.suite_id JOIN ai_drafts d ON d.id=s.draft_id WHERE d.conversation_id=? AND r.org_id=? AND r.project_id=? ORDER BY r.created_at DESC LIMIT 20",
@@ -634,6 +706,7 @@ export function registerAssistant(
         .map(({ test_id, test_revision, ...row }) => ({
           ...row,
           definition: JSON.parse(row.definition as string),
+          elements: suitePins(store.db, user.orgId, row.id as string),
           promoted: test_id
             ? { testId: test_id, revision: test_revision }
             : null,
@@ -666,10 +739,8 @@ export function registerAssistant(
             "Her senaryoda doğrulama olmalı.",
           );
         for (const action of scenario.actions) {
-          if (
-            "locator" in action &&
-            !observed.has(JSON.stringify(action.locator))
-          )
+          const target = actionTarget(action);
+          if (target?.locator && !observed.has(JSON.stringify(target.locator)))
             throw new DomainError(
               "UNOBSERVED_LOCATOR",
               "Locator incelenen sayfalarda yok.",
@@ -682,18 +753,35 @@ export function registerAssistant(
         }
       }
       const suiteId = randomUUID();
-      store.db
-        .prepare("INSERT INTO ai_suites VALUES (?,?,?,?,?,?)")
-        .run(
-          suiteId,
+      // Approval pins the current revision of every referenced element;
+      // unknown or unapproved keys reject the approval.
+      const elements = store.transaction(() => {
+        const pins = pinApprovedElements(
+          store.db,
           user.orgId,
           projectId,
-          id,
-          JSON.stringify(suite),
-          new Date().toISOString(),
+          new URL(suite.targetUrl).origin,
+          suiteElementKeys(suite),
         );
-      store.audit(user, projectId, "ai_suite.approved", suiteId);
-      return reply.code(201).send({ id: suiteId, definition: suite });
+        store.db
+          .prepare("INSERT INTO ai_suites VALUES (?,?,?,?,?,?)")
+          .run(
+            suiteId,
+            user.orgId,
+            projectId,
+            id,
+            JSON.stringify(suite),
+            new Date().toISOString(),
+          );
+        saveSuitePins(store.db, user.orgId, suiteId, pins);
+        store.audit(user, projectId, "ai_suite.approved", suiteId);
+        return pins.map(({ elementKey, elementId, revision }) => ({
+          elementKey,
+          elementId,
+          revision,
+        }));
+      });
+      return reply.code(201).send({ id: suiteId, definition: suite, elements });
     },
   );
   app.post(

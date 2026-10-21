@@ -1,17 +1,35 @@
 import { createHash } from "node:crypto";
 import { DomainError } from "../../domain/src/index";
 import type { LocatorSpec } from "../../domain/src/locators";
-import { aiSuiteSchema, type AiSuite } from "./spec";
+import { actionTarget, aiSuiteSchema, type AiSuite } from "./spec";
 import { locatorKey, type Inspection } from "./agent";
 
-/** Snapshot of an observed element, frozen into a promoted test version. */
+/**
+ * Snapshot of an element frozen into a promoted test version. Library
+ * references (ADR 014) also carry key, id and the pinned revision; tests
+ * promoted before that have only the observed fields.
+ */
 export type PromotedElement = {
   pageUrl: string;
   tag: string;
   label: string;
   role: string;
   locator: LocatorSpec;
+  elementKey?: string;
+  elementId?: string;
+  revision?: number;
+  name?: string;
 };
+/** A pinned library element as used by a run plan. */
+export type PlanElement = {
+  elementKey: string;
+  elementId: string;
+  revision: number;
+  name: string;
+  locator: LocatorSpec;
+};
+/** Pinned binding supplied when promoting (from the suite's pins). */
+export type PromotionBinding = PlanElement & { pageUrl: string };
 export type PromotedTest = {
   schemaVersion: "ai-test-1.0";
   testId: string;
@@ -31,6 +49,8 @@ export type PromotedPlan = {
   testRevision: number;
   targetUrl: string;
   scenarios: AiSuite["scenarios"];
+  /** Only present when the test references library elements. */
+  elements?: PlanElement[];
   checksum: string;
 };
 
@@ -50,7 +70,11 @@ export function buildPromotedTest(input: {
   suite: AiSuite;
   inspection: Pick<Inspection, "pages">;
   source: PromotedTest["source"];
+  bindings?: PromotionBinding[];
 }): PromotedTest {
+  const bindings = new Map(
+    (input.bindings ?? []).map((b) => [b.elementKey, b] as const),
+  );
   const suite = aiSuiteSchema.parse(input.suite);
   const target = new URL(suite.targetUrl);
   const observed = new Map<string, PromotedElement>();
@@ -79,8 +103,31 @@ export function buildPromotedTest(input: {
           throw new DomainError("TARGET_BLOCKED", "URL hedef dışı.");
         continue;
       }
-      if (!("locator" in action)) continue;
-      const key = locatorKey(action.locator);
+      const ref = actionTarget(action);
+      if (!ref) continue;
+      if (ref.element) {
+        const bound = bindings.get(ref.element);
+        if (!bound)
+          throw new DomainError(
+            "ELEMENT_UNAVAILABLE",
+            `Element onaylı değil ya da yok: ${ref.element}`,
+            409,
+          );
+        const seen = observed.get(locatorKey(bound.locator));
+        elements.set(`element:${bound.elementKey}`, {
+          pageUrl: bound.pageUrl,
+          tag: seen?.tag ?? "",
+          label: seen?.label ?? bound.name,
+          role: seen?.role ?? "",
+          locator: bound.locator,
+          elementKey: bound.elementKey,
+          elementId: bound.elementId,
+          revision: bound.revision,
+          name: bound.name,
+        });
+        continue;
+      }
+      const key = locatorKey(ref.locator!);
       const element = observed.get(key);
       if (!element)
         throw new DomainError(
@@ -114,7 +161,22 @@ export function compilePromoted(test: PromotedTest): PromotedPlan {
     targetUrl: test.targetUrl,
     scenarios: test.scenarios,
   };
-  return { ...plan, checksum: sha256(plan) };
+  const pinned: PlanElement[] = test.elements.flatMap((e) =>
+    e.elementKey && e.elementId && e.revision
+      ? [
+          {
+            elementKey: e.elementKey,
+            elementId: e.elementId,
+            revision: e.revision,
+            name: e.name ?? e.label,
+            locator: e.locator,
+          },
+        ]
+      : [],
+  );
+  // Plans without library references keep the pre-ADR-014 shape.
+  const body = pinned.length ? { ...plan, elements: pinned } : plan;
+  return { ...body, checksum: sha256(body) };
 }
 
 export function verifyPlan(plan: PromotedPlan): AiSuite {

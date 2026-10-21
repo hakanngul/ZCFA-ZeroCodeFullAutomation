@@ -8,7 +8,10 @@ import {
   normalizeInspection,
 } from "../../../packages/assistant/src/agent";
 import type { Provider } from "../../../packages/assistant/src/provider";
-import type { AiSuite } from "../../../packages/assistant/src/spec";
+import {
+  actionTarget,
+  type AiSuite,
+} from "../../../packages/assistant/src/spec";
 
 type Scoped = (
   request: FastifyRequest,
@@ -59,9 +62,10 @@ export function suiteMetrics(suite: AiSuite) {
     scenarios: suite.scenarios.length,
     actions: actions.length,
     assertions: actions.filter((a) => a.kind.startsWith("assert")).length,
-    fragileLocators: actions.filter(
-      (a) => "locator" in a && isFragileLocator(a.locator),
-    ).length,
+    fragileLocators: actions.filter((a) => {
+      const locator = actionTarget(a)?.locator;
+      return !!locator && isFragileLocator(locator);
+    }).length,
   };
 }
 

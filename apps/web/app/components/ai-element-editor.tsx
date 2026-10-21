@@ -22,6 +22,8 @@ export type AiElement = {
   inputType: string;
   locator: LibraryLocator;
   alternatives: LibraryLocator[];
+  /** Seen on an approved element; not used for execution until accepted. */
+  suggestedAlternatives?: LibraryLocator[];
   approved: boolean;
   revision: number;
   fragile: boolean;
@@ -65,6 +67,8 @@ const actionNames: Record<string, string> = {
   approved: "Onaylandı",
   unapproved: "Onay kaldırıldı",
   locator_changed: "Locator değişti (onay kaldırıldı)",
+  alternative_added: "Önerilen alternatif eklendi",
+  pinned: "Suite onayında sabitlendi",
 };
 
 export function locatorLabel(locator: LibraryLocator) {
@@ -185,6 +189,36 @@ export function AiElementEditor({
     }
   };
 
+  const acceptSuggestion = async (locator: LibraryLocator) => {
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await api<{ element: AiElement; history: HistoryRow[] }>(
+        `${path}/suggestions/accept`,
+        "POST",
+        { expectedRevision: base.revision, locator },
+      );
+      setBase(result.element);
+      setForm(result.element);
+      setHistory(result.history);
+      onSaved(result.element);
+      setMessage(
+        `Alternatif eklendi (sürüm ${result.element.revision}). Birincil locator değişmediği için onay korundu.`,
+      );
+    } catch (failure) {
+      if (failure instanceof ApiError && failure.code === "REVISION_CONFLICT") {
+        setError(
+          "Element bu arada değişti. Güncel sürüm yüklendi; değişikliği tekrar uygula.",
+        );
+        await reload().catch(() => undefined);
+      } else setError(String(failure));
+    } finally {
+      setSaving(false);
+    }
+  };
+  const suggestions = base.suggestedAlternatives ?? [];
+
   return (
     <div
       className="ai-element-editor"
@@ -298,6 +332,30 @@ export function AiElementEditor({
           <small>Keşifte başka tekil locator bulunmadı.</small>
         )}
         <small>Alternatifler çalıştırmada otomatik denenmez.</small>
+        {suggestions.length > 0 && (
+          <div className="ai-element-suggestions">
+            <strong>Önerilen alternatifler ({suggestions.length})</strong>
+            <small>
+              Onaylı element yeniden gözlenirken bulundu; eklenene kadar
+              kullanılmaz.
+            </small>
+            <ul>
+              {suggestions.map((suggestion) => (
+                <li key={locatorLabel(suggestion)}>
+                  <code>{locatorLabel(suggestion)}</code>
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={saving || locatorsChanged}
+                    onClick={() => void acceptSuggestion(suggestion)}
+                  >
+                    Alternatif olarak ekle
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </fieldset>
       <label className="ai-element-approval">
         <input

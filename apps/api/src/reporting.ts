@@ -284,15 +284,18 @@ export function registerReporting(
   type Action = {
     kind: string;
     locator?: Locator;
+    element?: string;
     expected?: string;
     impact?: string;
   };
   /** Action description without fill values (input data never leaves the run). */
   const describe = (action?: Action) => {
     if (!action) return "";
-    const target = action.locator
-      ? ` · ${action.locator.kind}${action.locator.role ? `(${action.locator.role})` : ""}=${action.locator.value}`
-      : "";
+    const target = action.element
+      ? ` · element ${action.element}`
+      : action.locator
+        ? ` · ${action.locator.kind}${action.locator.role ? `(${action.locator.role})` : ""}=${action.locator.value}`
+        : "";
     const expected =
       action.kind === "assertText" || action.kind === "assertUrl"
         ? ` · beklenen: ${action.expected ?? ""}`

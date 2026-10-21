@@ -16,7 +16,10 @@ import {
   type RunOutcome,
   type Variant,
 } from "../../domain/src/index";
-import { migrateAiElementLibrary } from "./ai-elements";
+import {
+  migrateAiElementLibrary,
+  migrateSuggestedAlternatives,
+} from "./ai-elements";
 export * from "./ai-elements";
 
 export const localDir = resolve(process.env.ZC_DATA_DIR ?? ".local");
@@ -138,6 +141,16 @@ export class Store {
       readFileSync(
         new URL(
           "../../../infra/migrations/009_ai_element_library.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    migrateSuggestedAlternatives(this.db);
+    this.db.exec(
+      readFileSync(
+        new URL(
+          "../../../infra/migrations/010_ai_suite_elements.sql",
           import.meta.url,
         ),
         "utf8",

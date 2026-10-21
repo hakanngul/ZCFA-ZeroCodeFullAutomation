@@ -1,9 +1,12 @@
 import { resolve } from "node:path";
 import {
+  approvedLibraryElements,
   draftIdOf,
   localDir,
   recordObservedElements,
+  resolveElementPins,
   Store,
+  suitePins,
   type Job,
 } from "../../../packages/storage/src/index";
 import {
@@ -24,6 +27,7 @@ import {
   type GenerationMetrics,
   executeSuite,
   suiteLeaseMs,
+  type ResolvedElements,
 } from "../../../packages/assistant/src/agent";
 import type { Provider } from "../../../packages/assistant/src/provider";
 import { providerRequest } from "../../../packages/assistant/src/provider";
@@ -37,6 +41,30 @@ import { loadVariables } from "../../../packages/assistant/src/variables";
 import { randomUUID } from "node:crypto";
 
 const store = new Store();
+/**
+ * A test plan's pinned elements: the checksummed plan supplies the locator,
+ * the library decides whether the element is still approved.
+ */
+function planElements(job: Job, plan: PromotedPlan): ResolvedElements {
+  const pins = plan.elements ?? [];
+  const current = resolveElementPins(
+    store.db,
+    job.org_id,
+    job.project_id,
+    pins,
+  );
+  return Object.fromEntries(
+    pins.map((pin) => {
+      const bound = current[pin.elementKey];
+      return [
+        pin.elementKey,
+        !bound || "unavailable" in bound
+          ? (bound ?? { unavailable: "removed" })
+          : { ...bound, name: pin.name, locator: pin.locator },
+      ];
+    }),
+  );
+}
 let stopping = false;
 let current: AbortController | undefined;
 for (const sig of ["SIGINT", "SIGTERM"])
@@ -218,6 +246,13 @@ while (!stopping) {
         payload.revision,
         loadVariables(store.db, job.org_id, job.project_id, target.origin),
         generation.metrics,
+        // Approved library elements of this site come first (ADR 014).
+        approvedLibraryElements(
+          store.db,
+          job.org_id,
+          job.project_id,
+          target.origin,
+        ),
       );
       store.transaction(() => {
         const valid = store.db
@@ -259,7 +294,7 @@ while (!stopping) {
     } else if (job.kind === "ai_suite") {
       const row = store.db
         .prepare(
-          "SELECT s.definition,s.draft_id,d.conversation_id FROM ai_suite_runs r JOIN ai_suites s ON s.id=r.suite_id JOIN ai_drafts d ON d.id=s.draft_id WHERE r.id=? AND r.org_id=? AND r.project_id=?",
+          "SELECT s.id AS suite_id,s.definition,s.draft_id,d.conversation_id FROM ai_suite_runs r JOIN ai_suites s ON s.id=r.suite_id JOIN ai_drafts d ON d.id=s.draft_id WHERE r.id=? AND r.org_id=? AND r.project_id=?",
         )
         .get(job.id, job.org_id, job.project_id);
       if (!row)
@@ -277,6 +312,13 @@ while (!stopping) {
           job.org_id,
           job.project_id,
           new URL(suite.targetUrl).origin,
+        ),
+        // Element keys resolve from the revisions pinned at approval.
+        resolveElementPins(
+          store.db,
+          job.org_id,
+          job.project_id,
+          suitePins(store.db, job.org_id, row.suite_id as string),
         ),
       );
       let advice: string | undefined;
@@ -406,6 +448,7 @@ while (!stopping) {
             job.project_id,
             new URL(suite.targetUrl).origin,
           ),
+          planElements(job, plan),
         );
         status =
           outcome.status === "passed" && !evidencedPass(plan, outcome)

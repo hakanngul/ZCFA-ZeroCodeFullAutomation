@@ -203,6 +203,7 @@ type ElementRow = {
   revision: number;
   first_seen_at: string;
   last_seen_at: string;
+  suggested_alternatives?: string;
 };
 function primaryOf(row: ElementRow): LibraryLocator {
   return (
@@ -215,13 +216,20 @@ function primaryOf(row: ElementRow): LibraryLocator {
       : { kind: row.locator_kind, value: row.locator_value }
   ) as LibraryLocator;
 }
-function alternativesOf(row: ElementRow): LibraryLocator[] {
+function parseLocators(raw: string | undefined): LibraryLocator[] {
   try {
-    const parsed = JSON.parse(row.alternatives) as unknown;
+    const parsed = JSON.parse(raw ?? "[]") as unknown;
     return Array.isArray(parsed) ? (parsed as LibraryLocator[]) : [];
   } catch {
     return [];
   }
+}
+function alternativesOf(row: ElementRow): LibraryLocator[] {
+  return parseLocators(row.alternatives);
+}
+/** Candidates seen on an approved element; never used for execution. */
+function suggestionsOf(row: ElementRow): LibraryLocator[] {
+  return parseLocators(row.suggested_alternatives);
 }
 export function aiElementView(row: ElementRow) {
   const locator = primaryOf(row);
@@ -241,6 +249,7 @@ export function aiElementView(row: ElementRow) {
     locatorRole: locator.kind === "role" ? locator.role : "",
     locator,
     alternatives: alternativesOf(row),
+    suggestedAlternatives: suggestionsOf(row),
     approved: row.approved === 1,
     revision: row.revision,
     fragile: isFragileLibraryLocator(locator),
@@ -265,7 +274,8 @@ export type ObservedForLibrary = {
  * Saves exploration observations. An observed node is the same element when
  * any of its candidate locators equals a stored primary or alternative on
  * the same page; it keeps its id, gets last_seen and new candidates as
- * alternatives (≤5). Approved elements keep primary, approval and metadata.
+ * alternatives (≤5). Approved elements keep primary, alternatives, approval
+ * and metadata; their new candidates go to `suggested_alternatives`.
  */
 export function recordObservedElements(
   db: DatabaseSync,
@@ -282,8 +292,10 @@ export function recordObservedElements(
     `INSERT OR IGNORE INTO ai_page_elements (id,org_id,project_id,page_url,tag,label,role,input_type,locator_kind,locator_value,first_seen_at,last_seen_at,origin,element_key,name,page_key,approved,alternatives,revision,locator_role)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,1,?)`,
   );
+  // Approved elements never change silently: new candidates become
+  // suggestions a person can accept as an alternative (new revision).
   const touchApproved = db.prepare(
-    "UPDATE ai_page_elements SET last_seen_at=?,alternatives=? WHERE id=?",
+    "UPDATE ai_page_elements SET last_seen_at=?,suggested_alternatives=? WHERE id=?",
   );
   const touch = db.prepare(
     "UPDATE ai_page_elements SET tag=?,label=?,role=?,input_type=?,last_seen_at=?,alternatives=? WHERE id=?",
@@ -309,6 +321,7 @@ export function recordObservedElements(
       row,
       primary: libraryLocatorKey(primaryOf(row)),
       alternatives: alternativesOf(row),
+      suggestions: suggestionsOf(row),
     }));
     for (const element of page.elements) {
       const seen = new Set<string>();
@@ -338,27 +351,38 @@ export function recordObservedElements(
         const known = new Set([
           match.primary,
           ...match.alternatives.map(libraryLocatorKey),
+          ...match.suggestions.map(libraryLocatorKey),
         ]);
         const added = candidates.filter(
           (locator) => !known.has(libraryLocatorKey(locator)),
         ) as LibraryLocator[];
+        if (match.row.approved) {
+          match.suggestions = [...match.suggestions, ...added].slice(
+            0,
+            maxAlternatives,
+          );
+          touchApproved.run(
+            now,
+            JSON.stringify(match.suggestions),
+            match.row.id,
+          );
+          stats.matched++;
+          continue;
+        }
         const alternatives = [...match.alternatives, ...added].slice(
           0,
           maxAlternatives,
         );
         match.alternatives = alternatives;
-        if (match.row.approved)
-          touchApproved.run(now, JSON.stringify(alternatives), match.row.id);
-        else
-          touch.run(
-            element.tag,
-            element.text,
-            element.role,
-            element.type,
-            now,
-            JSON.stringify(alternatives),
-            match.row.id,
-          );
+        touch.run(
+          element.tag,
+          element.text,
+          element.role,
+          element.type,
+          now,
+          JSON.stringify(alternatives),
+          match.row.id,
+        );
         stats.matched++;
         continue;
       }
@@ -411,6 +435,7 @@ export function recordObservedElements(
         row: { id, approved: 0 } as ElementRow,
         primary: keys[0]!,
         alternatives,
+        suggestions: [],
       });
     }
   }
@@ -575,10 +600,16 @@ export function updateAiElement(
     locator_value: input.locator.value,
     locator_role: input.locator.kind === "role" ? input.locator.role : "",
     alternatives: JSON.stringify(input.alternatives),
+    // A suggestion that became primary/alternative is no longer pending.
+    suggested_alternatives: JSON.stringify(
+      suggestionsOf(row).filter(
+        (locator) => !keys.includes(libraryLocatorKey(locator)),
+      ),
+    ),
     revision: row.revision + 1,
   };
   db.prepare(
-    "UPDATE ai_page_elements SET element_key=?,name=?,page_key=?,approved=?,locator_kind=?,locator_value=?,locator_role=?,alternatives=?,revision=? WHERE id=? AND revision=?",
+    "UPDATE ai_page_elements SET element_key=?,name=?,page_key=?,approved=?,locator_kind=?,locator_value=?,locator_role=?,alternatives=?,suggested_alternatives=?,revision=? WHERE id=? AND revision=?",
   ).run(
     next.element_key,
     next.name,
@@ -588,6 +619,7 @@ export function updateAiElement(
     next.locator_value,
     next.locator_role,
     next.alternatives,
+    next.suggested_alternatives!,
     next.revision,
     id,
     row.revision,
@@ -601,4 +633,253 @@ export function updateAiElement(
       : "updated";
   snapshot(db, next, action, actor.userId, now);
   return { element: aiElementView(next), changed: true, approvalCleared };
+}
+
+export const acceptSuggestionSchema = z
+  .object({
+    expectedRevision: z.number().int().min(1),
+    locator: libraryLocatorSchema,
+  })
+  .strict();
+/**
+ * Moves a suggested candidate into the alternatives (caller wraps it in a
+ * transaction). The primary locator is unchanged, so approval is kept; the
+ * change is a new revision with its own history row.
+ */
+export function acceptSuggestedAlternative(
+  db: DatabaseSync,
+  actor: Actor,
+  projectId: string,
+  id: string,
+  input: z.infer<typeof acceptSuggestionSchema>,
+) {
+  const row = aiElement(db, actor.orgId, projectId, id);
+  if (row.revision !== input.expectedRevision)
+    throw new DomainError(
+      "REVISION_CONFLICT",
+      "Element değişti. Güncel sürümü açıp değişikliği tekrar uygula.",
+      409,
+    );
+  const key = libraryLocatorKey(input.locator);
+  const suggestions = suggestionsOf(row);
+  const suggestion = suggestions.find((l) => libraryLocatorKey(l) === key);
+  if (!suggestion)
+    throw new DomainError(
+      "SUGGESTION_NOT_FOUND",
+      "Bu locator önerilen alternatifler arasında yok.",
+      404,
+    );
+  const alternatives = alternativesOf(row);
+  if (alternatives.length >= maxAlternatives)
+    throw new DomainError(
+      "TOO_MANY_ALTERNATIVES",
+      `En fazla ${maxAlternatives} alternatif tanımlanabilir.`,
+      409,
+    );
+  const now = new Date().toISOString();
+  snapshot(db, row, "observed", "system", now);
+  const next: ElementRow = {
+    ...row,
+    alternatives: JSON.stringify([...alternatives, suggestion]),
+    suggested_alternatives: JSON.stringify(
+      suggestions.filter((l) => libraryLocatorKey(l) !== key),
+    ),
+    revision: row.revision + 1,
+  };
+  db.prepare(
+    "UPDATE ai_page_elements SET alternatives=?,suggested_alternatives=?,revision=? WHERE id=? AND revision=?",
+  ).run(
+    next.alternatives,
+    next.suggested_alternatives!,
+    next.revision,
+    id,
+    row.revision,
+  );
+  snapshot(db, next, "alternative_added", actor.userId, now);
+  return { element: aiElementView(next) };
+}
+
+/**
+ * Guarded step after migration 009: adds `suggested_alternatives` and moves
+ * alternatives that observation appended to an approved element after its
+ * last revision (pre-fix behaviour) into the suggestions.
+ */
+export function migrateSuggestedAlternatives(db: DatabaseSync) {
+  const have = (
+    db.prepare("PRAGMA table_info(ai_page_elements)").all() as {
+      name: string;
+    }[]
+  ).some((row) => row.name === "suggested_alternatives");
+  if (have) return;
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.exec(
+      "ALTER TABLE ai_page_elements ADD COLUMN suggested_alternatives TEXT NOT NULL DEFAULT '[]'",
+    );
+    const rows = db
+      .prepare(
+        `SELECT e.id,e.alternatives,r.alternatives AS pinned FROM ai_page_elements e
+         JOIN ai_element_revisions r ON r.element_id=e.id AND r.revision=e.revision
+         WHERE e.approved=1`,
+      )
+      .all() as { id: string; alternatives: string; pinned: string }[];
+    const update = db.prepare(
+      "UPDATE ai_page_elements SET alternatives=?,suggested_alternatives=? WHERE id=?",
+    );
+    for (const row of rows) {
+      const pinned = parseLocators(row.pinned);
+      const keep = new Set(pinned.map(libraryLocatorKey));
+      const extra = parseLocators(row.alternatives).filter(
+        (l) => !keep.has(libraryLocatorKey(l)),
+      );
+      if (extra.length)
+        update.run(JSON.stringify(pinned), JSON.stringify(extra), row.id);
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+/** Approved elements of one site, as offered to the suite generator. */
+export function approvedLibraryElements(
+  db: DatabaseSync,
+  orgId: string,
+  projectId: string,
+  origin: string,
+) {
+  return (
+    db
+      .prepare(
+        "SELECT * FROM ai_page_elements WHERE org_id=? AND project_id=? AND origin=? AND approved=1 ORDER BY page_key,element_key LIMIT 200",
+      )
+      .all(orgId, projectId, origin) as unknown as ElementRow[]
+  ).map(aiElementView);
+}
+
+/** A suite/test reference to one immutable element revision. */
+export type ElementPin = {
+  elementKey: string;
+  elementId: string;
+  revision: number;
+};
+export type ElementBinding = ElementPin & {
+  name: string;
+  pageUrl: string;
+  locator: LibraryLocator;
+};
+/**
+ * Pins the current revision of approved elements for a suite approval.
+ * Unknown or unapproved keys → ELEMENT_UNAVAILABLE.
+ */
+export function pinApprovedElements(
+  db: DatabaseSync,
+  orgId: string,
+  projectId: string,
+  origin: string,
+  keys: string[],
+): ElementBinding[] {
+  const find = db.prepare(
+    "SELECT * FROM ai_page_elements WHERE org_id=? AND project_id=? AND origin=? AND element_key=?",
+  );
+  return keys.map((elementKey) => {
+    const row = find.get(orgId, projectId, origin, elementKey) as
+      ElementRow | undefined;
+    if (!row || row.approved !== 1)
+      throw new DomainError(
+        "ELEMENT_UNAVAILABLE",
+        `Element onaylı değil ya da yok: ${elementKey}`,
+        409,
+      );
+    // Approval always writes a revision row; this is a safety net.
+    snapshot(db, row, "pinned", "system", new Date().toISOString());
+    return {
+      elementKey,
+      elementId: row.id,
+      revision: row.revision,
+      name: row.name,
+      pageUrl: row.page_url,
+      locator: primaryOf(row),
+    };
+  });
+}
+export function saveSuitePins(
+  db: DatabaseSync,
+  orgId: string,
+  suiteId: string,
+  pins: ElementPin[],
+) {
+  const insert = db.prepare(
+    "INSERT INTO ai_suite_elements (suite_id,org_id,element_key,element_id,revision) VALUES (?,?,?,?,?)",
+  );
+  for (const pin of pins)
+    insert.run(suiteId, orgId, pin.elementKey, pin.elementId, pin.revision);
+}
+export function suitePins(
+  db: DatabaseSync,
+  orgId: string,
+  suiteId: string,
+): ElementPin[] {
+  return (
+    db
+      .prepare(
+        "SELECT element_key,element_id,revision FROM ai_suite_elements WHERE suite_id=? AND org_id=? ORDER BY rowid",
+      )
+      .all(suiteId, orgId) as {
+      element_key: string;
+      element_id: string;
+      revision: number;
+    }[]
+  ).map((row) => ({
+    elementKey: row.element_key,
+    elementId: row.element_id,
+    revision: row.revision,
+  }));
+}
+export type ElementResolution = Record<
+  string,
+  ElementBinding | { unavailable: string }
+>;
+/**
+ * Resolves pins to the locator of their immutable revision. An element that
+ * was removed or is no longer approved resolves to `unavailable`; the
+ * executor fails that step with ELEMENT_UNAVAILABLE (never PASS).
+ */
+export function resolveElementPins(
+  db: DatabaseSync,
+  orgId: string,
+  projectId: string,
+  pins: ElementPin[],
+): ElementResolution {
+  const current = db.prepare(
+    "SELECT approved FROM ai_page_elements WHERE id=? AND org_id=? AND project_id=?",
+  );
+  const pinned = db.prepare(
+    "SELECT * FROM ai_element_revisions WHERE element_id=? AND revision=? AND org_id=? AND project_id=?",
+  );
+  const result: ElementResolution = {};
+  for (const pin of pins) {
+    const row = current.get(pin.elementId, orgId, projectId) as
+      { approved: number } | undefined;
+    const revision = pinned.get(
+      pin.elementId,
+      pin.revision,
+      orgId,
+      projectId,
+    ) as Record<string, string | number> | undefined;
+    if (!row) result[pin.elementKey] = { unavailable: "removed" };
+    else if (row.approved !== 1)
+      result[pin.elementKey] = { unavailable: "unapproved" };
+    else if (!revision)
+      result[pin.elementKey] = { unavailable: "revision_missing" };
+    else
+      result[pin.elementKey] = {
+        ...pin,
+        name: revision.name as string,
+        pageUrl: revision.page_url as string,
+        locator: JSON.parse(revision.locator as string) as LibraryLocator,
+      };
+  }
+  return result;
 }

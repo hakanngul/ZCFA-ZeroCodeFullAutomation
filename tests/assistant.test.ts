@@ -6,7 +6,12 @@ import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
-import { recordObservedElements, Store } from "../packages/storage/src/index";
+import {
+  recordObservedElements,
+  resolveElementPins,
+  Store,
+  suitePins,
+} from "../packages/storage/src/index";
 import { DatabaseSync } from "node:sqlite";
 import {
   authorizedTarget,
@@ -19,6 +24,7 @@ import {
   explorationLeaseMs,
   explorationLimits,
   locatorKey,
+  normalizeElementRefs,
   observePage,
   pageForModel,
 } from "../packages/assistant/src/agent";
@@ -1643,6 +1649,49 @@ test(
       assert.ok(ids.includes("label"));
       const item = a11y.steps[0]!.findings!.items[0]!;
       assert.ok(item.impact && item.target && item.text);
+      // Library references resolve from the pinned binding only.
+      const refSuite = suite("clean", [
+        { kind: "fill", element: "search.query", value: "abc" },
+        { kind: "assertVisible", element: "search.query" },
+      ]);
+      const bound = await executeSuite(
+        browser,
+        refSuite,
+        join(dir, "ref-ok"),
+        [],
+        [],
+        {
+          "search.query": {
+            elementKey: "search.query",
+            revision: 2,
+            name: "Arama",
+            locator: { kind: "id", value: "q" },
+          },
+        },
+      );
+      assert.equal(bound.status, "passed");
+      assert.equal(bound.results[0]!.steps[0]!.element, "search.query");
+      assert.equal(bound.results[0]!.steps[0]!.elementName, "Arama");
+      assert.equal(bound.results[0]!.steps[0]!.elementRevision, 2);
+      for (const resolution of [
+        {} as Record<string, { unavailable: string }>,
+        { "search.query": { unavailable: "unapproved" } },
+      ]) {
+        const unavailable = await executeSuite(
+          browser,
+          refSuite,
+          join(dir, `ref-${Object.keys(resolution).length}`),
+          [],
+          [],
+          resolution,
+        );
+        assert.equal(unavailable.status, "failed");
+        assert.equal(
+          unavailable.results[0]!.steps[0]!.code,
+          "ELEMENT_UNAVAILABLE",
+        );
+        assert.equal(unavailable.results[0]!.steps.length, 1);
+      }
       // Promotion accepts locator-free checks; a failed check never PASSes.
       const promoted = buildPromotedTest({
         testId: randomUUID(),
@@ -2464,7 +2513,11 @@ test("element library links re-observations, keeps approvals and versions edits"
     assert.equal(kept.name, "Kullanıcı adı");
     assert.equal(kept.label, "Username");
     assert.deepEqual(kept.locator, linked.locator);
-    assert.equal(kept.alternatives.length, 4);
+    // New candidates of an approved element are only suggestions.
+    assert.equal(kept.alternatives.length, 3);
+    assert.deepEqual(kept.suggestedAlternatives, [
+      { kind: "label", value: "User" },
+    ]);
     // The key of an approved element is locked; keys are unique per origin.
     const locked = await put({
       ...edit,
@@ -2665,6 +2718,541 @@ test("migration 009 keeps elements saved before the library", () => {
       );
       store.close();
     }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("suites use approved elements by key, pinned at approval", async () => {
+  const previousKey = process.env.ZC_AI_ENCRYPTION_KEY;
+  process.env.ZC_AI_ENCRYPTION_KEY = randomBytes(32).toString("base64");
+  const { dir, store } = libraryFixture();
+  const app = await createApp(store);
+  const replies: unknown[] = [];
+  const requests: { messages: { role: string; content: string }[] }[] = [];
+  const server = Fastify();
+  server.post("/v1/chat/completions", async (request) => {
+    requests.push(structuredClone(request.body) as (typeof requests)[number]);
+    return replies.shift();
+  });
+  await server.listen({ host: "127.0.0.1", port: 0 });
+  try {
+    const headers = () => {
+      const id = randomUUID();
+      store.db
+        .prepare("INSERT INTO sessions VALUES (?,?,?)")
+        .run(id, JSON.stringify(admin), Date.now() + 60000);
+      return {
+        host: "127.0.0.1:4000",
+        cookie: `zc_session=${id}`,
+        origin: "http://127.0.0.1:3000",
+        "x-zerocode-client": "local-ui",
+      };
+    };
+    const call = async (
+      method: "GET" | "PUT" | "POST",
+      url: string,
+      payload?: unknown,
+    ) => {
+      const response = await app.inject({
+        method,
+        url,
+        headers: headers(),
+        ...(payload ? { payload: payload as object } : {}),
+      });
+      return { status: response.statusCode, body: response.json() };
+    };
+    const root = `/v1/projects/${demoProject}/ai`;
+    const origin = "https://shop.example.test";
+    store.db
+      .prepare("INSERT INTO ai_authorized_origins VALUES (?,?,?,?)")
+      .run(randomUUID(), admin.orgId, origin, new Date().toISOString());
+    const usernameLocator = { kind: "css", value: '[data-test="username"]' };
+    const loginLocator = { kind: "id", value: "login-button" };
+    const observedPage = {
+      title: "Shop",
+      url: shopPage,
+      elements: [
+        {
+          tag: "input",
+          text: "Username",
+          role: "textbox",
+          type: "text",
+          locator: usernameLocator,
+          alternatives: [{ kind: "id", value: "user-name" }],
+        },
+        {
+          tag: "button",
+          text: "Login",
+          role: "button",
+          type: "submit",
+          locator: loginLocator,
+        },
+      ],
+    };
+    recordObservedElements(store.db, admin.orgId, demoProject, [
+      observedPage as never,
+    ]);
+    const elements = (await call("GET", `${root}/elements`)).body.elements;
+    const user = elements.find(
+      (e: { label: string }) => e.label === "Username",
+    );
+    const approve = (body: Record<string, unknown> = {}) =>
+      call("PUT", `${root}/elements/${user.id}`, {
+        expectedRevision: user.revision,
+        elementKey: "login.username",
+        name: "Kullanıcı adı",
+        pageKey: "login",
+        locator: user.locator,
+        alternatives: user.alternatives,
+        approved: true,
+        ...body,
+      });
+    const approved = await approve();
+    assert.equal(approved.body.element.revision, 2);
+    // Fix: re-observation of an approved element only suggests.
+    recordObservedElements(store.db, admin.orgId, demoProject, [
+      {
+        url: shopPage,
+        elements: [
+          {
+            ...observedPage.elements[0]!,
+            alternatives: [{ kind: "placeholder", value: "Username" }],
+          },
+        ],
+      } as never,
+    ]);
+    const seen = (await call("GET", `${root}/elements/${user.id}`)).body;
+    assert.equal(seen.element.revision, 2);
+    assert.deepEqual(seen.element.alternatives, user.alternatives);
+    assert.deepEqual(seen.element.suggestedAlternatives, [
+      { kind: "placeholder", value: "Username" },
+    ]);
+    const accept = (body: Record<string, unknown>) =>
+      call("POST", `${root}/elements/${user.id}/suggestions/accept`, body);
+    const suggestion = { kind: "placeholder", value: "Username" };
+    assert.equal(
+      (await accept({ expectedRevision: 1, locator: suggestion })).body.code,
+      "REVISION_CONFLICT",
+    );
+    assert.equal(
+      (
+        await accept({
+          expectedRevision: 2,
+          locator: { kind: "label", value: "Nope" },
+        })
+      ).status,
+      404,
+    );
+    const accepted = await accept({ expectedRevision: 2, locator: suggestion });
+    assert.equal(accepted.status, 200);
+    assert.equal(accepted.body.element.revision, 3);
+    assert.equal(accepted.body.element.approved, true);
+    assert.deepEqual(accepted.body.element.alternatives, [
+      ...user.alternatives,
+      suggestion,
+    ]);
+    assert.deepEqual(accepted.body.element.suggestedAlternatives, []);
+    assert.equal(accepted.body.history[0].action, "alternative_added");
+
+    // Generation: library first, raw locators of approved elements normalized.
+    const provider = {
+      id: randomUUID(),
+      name: "Mock",
+      kind: "openai-compatible",
+      base_url: `http://127.0.0.1:${(server.server.address() as { port: number }).port}/v1`,
+      encrypted_key: encrypt("mock-key"),
+      model: "mock",
+      timeout_ms: 5000,
+      active: 1,
+    };
+    const target = new URL(shopPage);
+    const reply = (actions: unknown[]) => ({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              title: "Giriş",
+              targetUrl: target.href,
+              scenarios: [
+                { title: "Giriş dener", category: "positive", actions },
+              ],
+            }),
+          },
+        },
+      ],
+    });
+    replies.push(
+      reply([
+        { kind: "fill", element: "login.nope", value: "x" },
+        { kind: "assertVisible", locator: loginLocator },
+      ]),
+      reply([
+        {
+          kind: "fill",
+          locator: { kind: "id", value: "user-name" },
+          value: "x",
+        },
+        { kind: "click", locator: loginLocator },
+        { kind: "assertVisible", element: "login.username" },
+      ]),
+    );
+    const { approvedLibraryElements } =
+      await import("../packages/storage/src/index");
+    const library = approvedLibraryElements(
+      store.db,
+      admin.orgId,
+      demoProject,
+      origin,
+    );
+    assert.deepEqual(
+      library.map((e) => e.elementKey),
+      ["login.username"],
+    );
+    const suite = await generateSuite(
+      provider,
+      "mock",
+      "giriş senaryosu",
+      target,
+      { pages: [observedPage], path: [] },
+      undefined,
+      [],
+      newGenerationMetrics(),
+      library,
+    );
+    assert.deepEqual(suite.scenarios[0]!.actions, [
+      { kind: "fill", value: "x", element: "login.username" },
+      { kind: "click", locator: loginLocator },
+      { kind: "assertVisible", element: "login.username" },
+    ]);
+    const system = requests[0]!.messages[0]!.content;
+    assert.match(system, /"element":ELEMENT_KEY/);
+    // Prompt names exactly the observable locator kinds.
+    assert.match(system, /"testId"\|"id"\|"css"\|"label"\|"placeholder"/);
+    assert.doesNotMatch(system, /xpath|altText/);
+    const user0 = requests[0]!.messages[1]!.content;
+    assert.ok(
+      user0.indexOf("libraryElements") < user0.indexOf("observedPages"),
+    );
+    const sent = JSON.parse(user0);
+    assert.deepEqual(sent.libraryElements, [
+      {
+        element: "login.username",
+        name: "Kullanıcı adı",
+        page: "login",
+        pageUrl: shopPage,
+      },
+    ]);
+    assert.equal(sent.observedPages[0].elements[0].element, "login.username");
+    assert.equal(sent.observedPages[0].elements[1].element, undefined);
+    assert.match(
+      requests[1]!.messages.at(-1)!.content,
+      /not in libraryElements: login\.nope/,
+    );
+    // Normalization is pure and skips locators shared by two keys.
+    assert.equal(
+      normalizeElementRefs(suite, [
+        ...library,
+        { ...library[0]!, elementKey: "login.other" },
+      ]).normalized,
+      0,
+    );
+    // Exactly one target; unobservable locator kinds are rejected.
+    const one = (action: unknown) =>
+      aiSuiteSchema.safeParse({
+        title: "Tek",
+        targetUrl: target.href,
+        scenarios: [
+          { title: "Tek hedef", category: "positive", actions: [action] },
+        ],
+      }).success;
+    assert.equal(
+      one({ kind: "click", element: "login.username", locator: loginLocator }),
+      false,
+    );
+    assert.equal(one({ kind: "click" }), false);
+    assert.equal(
+      one({ kind: "click", locator: { kind: "xpath", value: "//a" } }),
+      false,
+    );
+    assert.equal(one({ kind: "click", element: "login.username" }), true);
+
+    // Approval pins the current revision; unapproved keys are refused.
+    const conversationId = randomUUID();
+    store.db
+      .prepare("INSERT INTO ai_conversations VALUES (?,?,?,?,?)")
+      .run(
+        conversationId,
+        admin.orgId,
+        demoProject,
+        "c",
+        new Date().toISOString(),
+      );
+    const draft = (definition: unknown) => {
+      const id = randomUUID();
+      store.db
+        .prepare("INSERT INTO ai_drafts VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+        .run(
+          id,
+          admin.orgId,
+          demoProject,
+          conversationId,
+          provider.id,
+          "mock",
+          target.href,
+          JSON.stringify({ pages: [observedPage], path: [] }),
+          JSON.stringify(definition),
+          "ready",
+          null,
+          new Date().toISOString(),
+        );
+      return id;
+    };
+    const withAssert = {
+      ...suite,
+      scenarios: [
+        {
+          ...suite.scenarios[0]!,
+          actions: [
+            ...suite.scenarios[0]!.actions,
+            { kind: "assertText", element: "login.username", expected: "x" },
+          ],
+        },
+      ],
+    };
+    const draftId = draft(withAssert);
+    const conversation = await call(
+      "GET",
+      `${root}/conversations/${conversationId}`,
+    );
+    assert.deepEqual(conversation.body.drafts[0].elementRefs, {
+      "login.username": { name: "Kullanıcı adı", approved: true, revision: 3 },
+    });
+    const saved = await call(
+      "POST",
+      `${root}/drafts/${draftId}/save`,
+      withAssert,
+    );
+    assert.equal(saved.status, 201);
+    assert.deepEqual(saved.body.elements, [
+      { elementKey: "login.username", elementId: user.id, revision: 3 },
+    ]);
+    const login = elements.find((e: { label: string }) => e.label === "Login");
+    const unapprovedRef = {
+      ...withAssert,
+      scenarios: [
+        {
+          ...withAssert.scenarios[0]!,
+          actions: [{ kind: "assertVisible", element: login.elementKey }],
+        },
+      ],
+    };
+    const refused = await call(
+      "POST",
+      `${root}/drafts/${draft(unapprovedRef)}/save`,
+      unapprovedRef,
+    );
+    assert.equal(refused.status, 409);
+    assert.equal(refused.body.code, "ELEMENT_UNAVAILABLE");
+    assert.equal(
+      store.db.prepare("SELECT count(*) AS n FROM ai_suites").get()!.n,
+      1,
+    );
+    const pins = suitePins(store.db, admin.orgId, saved.body.id);
+    assert.throws(
+      () => store.db.prepare("UPDATE ai_suite_elements SET revision=1").run(),
+      /immutable ai suite element pin/,
+    );
+    const resolved = resolveElementPins(
+      store.db,
+      admin.orgId,
+      demoProject,
+      pins,
+    );
+    assert.deepEqual(
+      (resolved["login.username"] as { locator: unknown }).locator,
+      usernameLocator,
+    );
+
+    // Promotion snapshots key + revision and puts them in the checksummed plan.
+    const promoted = await call(
+      "POST",
+      `${root}/suites/${saved.body.id}/promote`,
+    );
+    assert.equal(promoted.status, 201);
+    const pinned = promoted.body.test.elements.find(
+      (e: { elementKey?: string }) => e.elementKey === "login.username",
+    );
+    assert.equal(pinned.revision, 3);
+    assert.equal(pinned.elementId, user.id);
+    const plan = compilePromoted(promoted.body.test);
+    assert.deepEqual(plan.elements, [
+      {
+        elementKey: "login.username",
+        elementId: user.id,
+        revision: 3,
+        name: "Kullanıcı adı",
+        locator: usernameLocator,
+      },
+    ]);
+    assert.equal(verifyPlan(plan).scenarios.length, 1);
+    assert.throws(
+      () =>
+        verifyPlan({
+          ...plan,
+          elements: [{ ...plan.elements![0]!, revision: 2 }],
+        }),
+      /bütünlüğü/,
+    );
+    const run = await call(
+      "POST",
+      `${root}/tests/${promoted.body.test.testId}/runs`,
+      {},
+    );
+    assert.equal(run.status, 202);
+
+    // A second suite saved now, then the element loses approval.
+    const second = await call(
+      "POST",
+      `${root}/drafts/${draft(withAssert)}/save`,
+      withAssert,
+    );
+    assert.equal(second.status, 201);
+    const unapproved = await approve({
+      expectedRevision: 3,
+      alternatives: accepted.body.element.alternatives,
+      approved: false,
+    });
+    assert.equal(unapproved.body.element.approved, false);
+    assert.deepEqual(
+      resolveElementPins(store.db, admin.orgId, demoProject, pins),
+      { "login.username": { unavailable: "unapproved" } },
+    );
+    const blocked = await call(
+      "POST",
+      `${root}/suites/${second.body.id}/promote`,
+    );
+    assert.equal(blocked.status, 409);
+    assert.equal(blocked.body.code, "ELEMENT_UNAVAILABLE");
+  } finally {
+    await server.close();
+    await app.close();
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+    if (previousKey === undefined) delete process.env.ZC_AI_ENCRYPTION_KEY;
+    else process.env.ZC_AI_ENCRYPTION_KEY = previousKey;
+  }
+});
+test("old promoted tests keep their plan shape without element pins", () => {
+  const test = buildPromotedTest({
+    testId: randomUUID(),
+    revision: 1,
+    orgId: admin.orgId,
+    projectId: demoProject,
+    suite: aiSuiteSchema.parse({
+      title: "Eski test",
+      targetUrl: shopPage,
+      scenarios: [
+        {
+          title: "Görünür",
+          category: "positive",
+          actions: [
+            { kind: "assertVisible", locator: { kind: "id", value: "a" } },
+          ],
+        },
+      ],
+    }),
+    inspection: {
+      pages: [
+        {
+          title: "Shop",
+          url: shopPage,
+          elements: [
+            {
+              tag: "a",
+              text: "A",
+              role: "link",
+              type: "",
+              locator: { kind: "id", value: "a" },
+            },
+          ],
+        },
+      ],
+    },
+    source: {
+      suiteId: randomUUID(),
+      draftId: randomUUID(),
+      conversationId: randomUUID(),
+    },
+  });
+  assert.equal(test.elements[0]!.elementKey, undefined);
+  const plan = compilePromoted(test);
+  assert.equal("elements" in plan, false);
+  assert.equal(verifyPlan(plan).scenarios.length, 1);
+});
+test("migration moves silently added alternatives of approved elements to suggestions", async () => {
+  const { dir, store } = libraryFixture();
+  const path = join(dir, "test.sqlite");
+  const { updateAiElement } = await import("../packages/storage/src/index");
+  try {
+    recordObservedElements(store.db, admin.orgId, demoProject, [
+      {
+        url: shopPage,
+        elements: [
+          {
+            tag: "input",
+            text: "Username",
+            role: "textbox",
+            type: "text",
+            locator: { kind: "id", value: "user-name" },
+            alternatives: [{ kind: "placeholder", value: "Username" }],
+          },
+        ],
+      },
+    ]);
+    const row = store.db
+      .prepare("SELECT id,alternatives FROM ai_page_elements")
+      .get() as { id: string; alternatives: string };
+    store.transaction(() =>
+      updateAiElement(store.db, admin, demoProject, row.id, {
+        expectedRevision: 1,
+        elementKey: "login.username",
+        name: "Kullanıcı adı",
+        pageKey: "login",
+        locator: { kind: "id", value: "user-name" },
+        alternatives: JSON.parse(row.alternatives),
+        approved: true,
+      }),
+    );
+    // Pre-fix behaviour: observation appended an alternative without a revision.
+    store.db
+      .prepare("UPDATE ai_page_elements SET alternatives=? WHERE id=?")
+      .run(
+        JSON.stringify([
+          { kind: "placeholder", value: "Username" },
+          { kind: "label", value: "User" },
+        ]),
+        row.id,
+      );
+    store.db.exec(
+      "ALTER TABLE ai_page_elements DROP COLUMN suggested_alternatives",
+    );
+    store.close();
+    const reopened = new Store(path);
+    const after = reopened.db
+      .prepare(
+        "SELECT alternatives,suggested_alternatives,revision,approved FROM ai_page_elements WHERE id=?",
+      )
+      .get(row.id) as Record<string, string | number>;
+    reopened.close();
+    assert.deepEqual(JSON.parse(after.alternatives as string), [
+      { kind: "placeholder", value: "Username" },
+    ]);
+    assert.deepEqual(JSON.parse(after.suggested_alternatives as string), [
+      { kind: "label", value: "User" },
+    ]);
+    assert.equal(after.revision, 2);
+    assert.equal(after.approved, 1);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -1,5 +1,44 @@
 # Devam noktası — 19 Ekim 2026
 
+## 21 Ekim 2026 — Element kütüphanesi Faz 2: suite'ler elementleri anahtarla kullanır
+
+Plan `wiggly-plotting-teapot` Faz 2 tamamlandı (Faz 3–4 başlamadı); ADR 014.
+`spec.ts`: `fill`/`click`/`assertVisible`/`assertText` tam olarak birini taşır:
+`element: "<anahtar>"` veya `locator`; AI locator türleri gözlenebilen 6 türe
+indirildi (prompt aynı listeyi üretir, önceden şema 10 tür kabul ediyordu).
+`generateSuite` önce origin'in onaylı elementlerini (`libraryElements`:
+anahtar, ad, sayfa, URL, kırılgan), sonra gözlemleri gönderir; onaylı elemente
+denk gelen gözlem `element` ile işaretlenir. Karar: onaylı elementin
+birincil/alternatif locator'ı ham kullanılırsa **deterministik olarak
+anahtara çevrilir** (ek provider çağrısı yok; iki anahtara denk gelen locator
+çevrilmez); bilinmeyen anahtar düzeltme turunda bildirilir. Taslak onayı
+kullanılan revizyonları `ai_suite_elements`'a (migration 010, değişmez) pinler;
+onaysız anahtar 409 `ELEMENT_UNAVAILABLE`. Worker anahtarı pinli revizyondan
+çözer; onayı kaldırılmış/silinmiş element adımı `ELEMENT_UNAVAILABLE` ile
+düşürür. Kalıcı test anlık görüntüsü `elementKey`/`elementId`/`revision`
+taşır, plan yalnız referans varsa `elements` taşır (checksum'a dahil); eski
+testler aynı şekilde okunur. UI: taslak senaryoları açılır adım listesi,
+çalışma adımları "Ad (anahtar)" gösterir. Faz 1 düzeltmesi: onaylı elementin
+yeniden gözlemdeki yeni adayları `suggested_alternatives`'a gider (çalıştırmada
+kullanılmaz); düzenleme panelinde "Alternatif olarak ekle" yeni revizyon
+(`alternative_added`) üretir, birincil değişmediği için onay korunur; migration
+önceden revizyonsuz eklenmiş alternatifleri öneriye taşır. Testler: element
+referansı + normalizasyon + düzeltme turu, tek hedef şeması, pinleme ve
+reddetme, pinli revizyondan çözüm, onay kaldırılınca `ELEMENT_UNAVAILABLE`
+(executor + terfi), plan checksum'ı, eski plan şekli, öneri/kabul/409,
+öneri migration'ı. Doğrulama: typecheck, format:check, `pnpm test` 40/40,
+build, `test:e2e` 13/13. Gerçek kontrol (`.local/my-data`, önce
+`/tmp/zc-my-data-backup-20261021-faz2.sqlite` yedeği; 276 element korundu):
+Evren `deepseek-v4.1-flash`, SauceDemo 7 senaryolu login istemi → taslak
+24 sn'de, 24 adımın hedefli 23'ünün hepsi `login.*` anahtarı (0 ham
+locator); onay 5 elementi v2'de pinledi; suite çalıştırması 7/7 başarılı;
+kalıcı teste dönüştürme (`login.*@2`) ve test çalıştırması 7/7 başarılı.
+Kanıt: `docs/evidence/elements/suite-element-refs.png`,
+`run-element-refs.png`. Sınırlar: keşif modelin geçersiz adımıyla 1 sayfada
+durdu (login için yeterli); yeniden gözlem onaylı 5 login elementine öneri
+ekledi (kabul edilmedi); element yeni revizyon alınca mevcut suite/testler
+eski pinli revizyonda kalır (Faz 3).
+
 ## 21 Ekim 2026 — Element kütüphanesi Faz 1: aday locator'lar, adlandırma, onay
 
 Plan `wiggly-plotting-teapot` Faz 1 tamamlandı (Faz 2–4 başlamadı). Keşif her

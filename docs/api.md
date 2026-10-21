@@ -74,6 +74,7 @@ uygulamayı açtığı anlamına gelmez: deneme canlı yerel demo hedefinde yap�
 | GET        | /v1/projects/:projectId/ai/elements                                | AI ile gözlenen sayfa elementleri                                           |
 | GET        | /v1/projects/:projectId/ai/elements/:id                            | Kütüphane elementi ve değişmez geçmişi                                      |
 | PUT        | /v1/projects/:projectId/ai/elements/:id                            | Ad/anahtar/sayfa/locator/onay (`expectedRevision`, 409)                     |
+| POST       | /v1/projects/:projectId/ai/elements/:id/suggestions/accept         | Önerilen alternatifi ekle (`expectedRevision`, onay korunur)                |
 | DELETE     | /v1/ai/authorized-origins/:id                                      | Yetkili hedefi kaldır                                                       |
 | GET        | /v1/projects/:projectId/ai/conversations                           | Konuşma geçmişi                                                             |
 | GET        | /v1/projects/:projectId/ai/conversations/:id                       | Mesaj, taslak ve çalışma geçmişi                                            |

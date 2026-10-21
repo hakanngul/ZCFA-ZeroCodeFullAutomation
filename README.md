@@ -109,16 +109,29 @@ Bu liste bir **site element kütüphanesidir** (ADR 013). Keşif her öğe için
 sayfada tekil en fazla 3 locator saklar (birincil + alternatifler); sonraki
 keşifte adaylardan biri aynı sayfadaki bir elementin birincil/alternatif
 locator'ına eşitse aynı element güncellenir (yeni kayıt açılmaz, yeni adaylar
-≤5 alternatife eklenir; onaylı elementin birincil locator'ı ve onayı
-değişmez). Her elemente `<sayfa>.<etiket>` biçiminde anahtar önerilir
+onaysız elementte ≤5 alternatife eklenir; onaylı elementin locator'ları ve
+onayı değişmez). Her elemente `<sayfa>.<etiket>` biçiminde anahtar önerilir
 (çakışmada `_2`); anahtar org + proje + origin içinde tekildir. Satırdaki
 **Düzenle** ile ad, anahtar (ör. `login.username`), sayfa anahtarı, birincil
 locator / alternatifler (birincil yap, kaldır) ve onay değiştirilir; "Durum"
 filtresi onaylıları ayırır. Kayıt `PUT /v1/projects/:id/ai/elements/:elementId`
 ile `expectedRevision` ister (eskiyse 409); locator değişikliği onayı kaldırır,
 onaylı elementin anahtarı kilitlidir, her değişiklik salt okunur geçmişe
-yazılır. Alternatifler çalıştırmada otomatik denenmez; suite'ler henüz
-anahtarları kullanmaz (sonraki faz).
+yazılır. Alternatifler çalıştırmada otomatik denenmez. Onaylı elementin
+yeniden gözlemde bulunan yeni adayları **önerilen alternatifler** olarak
+düzenleme panelinde görünür; "Alternatif olarak ekle" yeni revizyon üretir ve
+birincil locator değişmediği için onayı korur.
+
+**Suite'ler elementleri anahtarla kullanır** (ADR 014): suite üretim
+prompt'u önce sitenin onaylı elementlerini (anahtar, ad, sayfa, kırılgan),
+sonra yeni gözlemleri verir; action hedefi ya `element: "login.username"` ya
+da (onaysız gözlem için) `locator` olur. Model onaylı bir elementin locator'ını
+ham kullanırsa üretimde deterministik olarak anahtara çevrilir. Taslak
+onayında kullanılan element revizyonları sabitlenir (`ai_suite_elements`);
+çalıştırma anahtarı bu revizyondan çözer, element onaysız/silinmişse adım
+`ELEMENT_UNAVAILABLE` ile düşer. Kalıcı testler `elementKey` + `revision`
+anlık görüntüsü taşır (checksum'a dahil). Taslak ve çalışma adımlarında
+element adı ve anahtarı görünür.
 
 ## Mimari
 

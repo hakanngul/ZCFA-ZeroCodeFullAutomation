@@ -41,5 +41,6 @@ artımda değişmez.
 ## Sonuçlar
 
 Eski satırlar id'leriyle korunur, hepsi onaysız v1 olarak başlar. Gözlemin
-onaylı elemente eklediği alternatifler revizyon üretmez; çalıştırmada
+onaylı elemente bulduğu yeni adaylar ADR 014 ile önerilen alternatif olur
+(revizyonsuz değişiklik yok); çalıştırmada
 alternatifler otomatik denenmez (self-healing ayrı bir ADR'de ele alınacak).
