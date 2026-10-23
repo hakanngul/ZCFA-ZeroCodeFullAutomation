@@ -1,5 +1,18 @@
 # Devam noktası — 19 Ekim 2026
 
+## 24 Ekim 2026 — Windows 11 geliştirme başlatıcısı
+
+- `scripts/dev.ts` API, fixture, worker ve Next.js'i `process.execPath`
+  ile doğrudan başlatır; alt `pnpm`/shell süreçleri ve Windows'ta
+  `detached` kullanılmaz. `windowsHide` ile servisler tek terminalde kalır.
+- `dev:web` aynı başlatıcıyı `--web-only` ile kullanır.
+  `ZC_WEB_PORT` hem PowerShell hem Unix ortamında okunur ve kontrol edilir.
+- `Ctrl+C` Windows'ta `taskkill /T /F` ile yalnız başlatılan
+  servislerin alt süreçlerini, Unix'te süreç gruplarını kapatır.
+- Windows 11 yerel doğrulaması bekliyor; Node 24.x gerekli. CI kontrolü
+  bu değişiklikten sonraki workflow sonucu ile doğrulanacak.
+
+
 ## 22 Ekim 2026 — Keşif önce test planı önerir; testler seçimle oluşur
 
 ADR 018. Sohbetteki "Önce siteyi analiz et ve test planı öner" kutusu

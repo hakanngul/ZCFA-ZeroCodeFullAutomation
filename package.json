@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "tsx scripts/dev.ts",
     "dev:resume": "tsx scripts/dev-resume.ts",
-    "dev:web": "next dev apps/web --hostname 127.0.0.1 --port ${ZC_WEB_PORT:-5000}",
+    "dev:web": "tsx scripts/dev.ts --web-only",
     "dev:api": "tsx apps/api/src/main.ts",
     "dev:worker": "tsx apps/worker/src/main.ts",
     "dev:fixture": "tsx tests/fixtures/server.ts",
