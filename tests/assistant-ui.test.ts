@@ -284,6 +284,30 @@ test(
       await page.getByText("testId: login-password").waitFor();
       await page.getByPlaceholder("Ad, anahtar veya locator ile ara").fill("");
       await page.getByText("testId: login-email").waitFor();
+      // Check the AI element filter layout at desktop and narrow viewports.
+      for (const width of [1440, 1050, 800, 600, 390]) {
+        await page.setViewportSize({ width, height: 1000 });
+        const layout = await page
+          .locator(".ai-element-filters")
+          .evaluate((filter) => {
+            const bounds = filter.getBoundingClientRect();
+            const labels = [...filter.querySelectorAll("label")];
+            return {
+              overflow: filter.scrollWidth > filter.clientWidth + 1,
+              outside: labels.some((label) => {
+                const rect = label.getBoundingClientRect();
+                return rect.left < bounds.left - 1 || rect.right > bounds.right + 1;
+              }),
+            };
+          });
+        assert.equal(layout.overflow, false, `Filter overflow at ${width}px`);
+        assert.equal(layout.outside, false, `Filter clipping at ${width}px`);
+        if (width === 800 || width === 390)
+          await page.locator(".ai-element-list").screenshot({
+            path: join(evidence, `ai-elements-${width}.png`),
+          });
+      }
+      await page.setViewportSize({ width: 1440, height: 1000 });
       await page.screenshot({
         path: join(evidence, "ai-elements.png"),
         fullPage: true,

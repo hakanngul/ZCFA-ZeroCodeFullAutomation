@@ -183,22 +183,31 @@ export function AiElementList({
 
   return (
     <section className="card ai-element-list">
-      <div>
+      <div className="ai-element-intro">
         <span className="eyebrow">AI KEŞFİ</span>
         <h2>Web sitelerinden kaydedilen elementler</h2>
-        <p>
-          AI keşfinden yalnız üretilen testlerin adımlarında kullanılan ve
-          sayfada tekil doğrulanan öğeler kaydedilir; her öğe için en fazla 3
-          tekil locator (birincil + alternatifler) tutulur. Yeni keşif,
-          locator'larından biri eşleşen kaydı yeniden kullanır; onaylı kaydı
-          değiştirmez, farklı locator'ı öneri olarak ekler. Elementi adlandırıp
-          anahtar verin ve onaylayın; locator değişikliği onayı kaldırır. Sıra
-          numarasına (nth-of-type) dayanan CSS yolları <b>kırılgan</b> olarak
-          işaretlenir.
+        <p className="ai-element-summary">
+          Testlerde kullanılan ve sayfada tekil doğrulanan elementler burada
+          kaydedilir. Locator’ları ve onay durumlarını tek yerden yönetin.
         </p>
+        <details className="ai-element-help">
+          <summary>Element kayıt ve onay kuralları</summary>
+          <p>
+            Her element için en fazla 3 tekil locator (birincil + alternatifler)
+            tutulur. Yeni keşif mevcut kaydı yeniden kullanır; onaylı kaydı
+            değiştirmez, farklı locator’ı öneri olarak ekler. Elementi
+            adlandırıp anahtar vererek onaylayabilirsiniz. Locator değişikliği
+            onayı kaldırır. Sıra numarasına (nth-of-type) dayanan CSS yolları
+            <b> kırılgan</b> olarak işaretlenir.
+          </p>
+        </details>
       </div>
-      <div className="ai-element-filters">
-        <label>
+      <div
+        className="ai-element-filters"
+        role="group"
+        aria-label="Element filtreleri"
+      >
+        <label className="ai-element-search">
           Ara
           <input
             type="search"
@@ -253,11 +262,18 @@ export function AiElementList({
       {notice && <p role="status">{notice}</p>}
       {error && <p role="alert">{error}</p>}
       {!error && pages && !pages.length && (
-        <p>
-          {query
-            ? "Aramayla eşleşen element yok."
-            : "Henüz AI ile keşfedilen element yok."}
-        </p>
+        <div className="ai-element-empty" role="status">
+          <strong>
+            {query || status
+              ? "Filtrelerle eşleşen element yok."
+              : "Henüz AI ile keşfedilen element yok."}
+          </strong>
+          <p>
+            {query || status
+              ? "Başka bir anahtar arayın veya filtreleri temizleyin."
+              : "AI Test Assistant ile keşif yapıp test oluşturduğunuzda kullanılan elementler burada görünecek."}
+          </p>
+        </div>
       )}
       {visiblePages.map((page) => {
         const isOpen = open.has(page.pageUrl);

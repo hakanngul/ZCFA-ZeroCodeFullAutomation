@@ -1,5 +1,16 @@
 # Devam noktası — 19 Ekim 2026
 
+## 24 Ekim 2026 — AI Elementler ekranı responsive düzenleme
+
+- Açıklama kısaltıldı; ayrıntılı kayıt/onay kuralları erişilebilir
+  açılır bilgi bölümüne taşındı.
+- Arama, durum ve sayfa filtreleri uyarlanabilir grid ile hizalandı.
+  Sayaç ayrı satırda, boş liste yönlendirmesi kart içinde gösterilir.
+- AI UI E2E kontrolüne 1440, 1050, 800, 600 ve 390 px taşma
+  doğrulaması, 800 ve 390 px ekran kanıtı eklendi.
+- Windows tarayıcı doğrulaması Core tunnel yetkisi yüzünden yapılamıyor;
+  GitHub CI sonucu takip edilmeli.
+
 ## 24 Ekim 2026 — Windows 11 geliştirme başlatıcısı
 
 - `scripts/dev.ts` API, fixture, worker ve Next.js'i `process.execPath`
