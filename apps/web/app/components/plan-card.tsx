@@ -7,6 +7,9 @@ export type PlanItem = {
   category: "positive" | "negative" | "edge";
   area: string;
   description: string;
+  preconditions?: string[];
+  steps?: string[];
+  expectedResults?: string[];
   pages: string[];
   testData: string[];
   feasible: boolean;
@@ -15,9 +18,13 @@ export type PlanItem = {
 export type TestPlan = { summary: string; items: PlanItem[] };
 export type PlanSelection = {
   items: {
+    sourceIndex?: number;
     title: string;
     category: PlanItem["category"];
     description: string;
+    preconditions?: string[];
+    steps?: string[];
+    expectedResults?: string[];
   }[];
   instruction?: string;
 };
@@ -36,6 +43,12 @@ const path = (raw: string) => {
     return raw;
   }
 };
+const planLines = (raw: string, limit: number) =>
+  raw
+    .split("\n")
+    .map((line) => line.trim().slice(0, 300))
+    .filter(Boolean)
+    .slice(0, limit);
 
 /**
  * Proposed test plan of a survey exploration (ADR 018). Nothing is created
@@ -65,6 +78,8 @@ export function PlanCard({
       ),
   );
   const [edits, setEdits] = useState<Record<number, Partial<PlanItem>>>({});
+  // Keep the raw textarea including trailing newlines while the user types.
+  const [reviewText, setReviewText] = useState<Record<string, string>>({});
   const [instruction, setInstruction] = useState("");
   const items = plan.items.map((item, i) => ({ ...item, ...edits[i] }));
   const areas = useMemo(
@@ -85,9 +100,24 @@ export function PlanCard({
       items: [...selected]
         .sort((a, b) => a - b)
         .map((i) => ({
+          sourceIndex: i,
           title: items[i]!.title.trim(),
           category: items[i]!.category,
           description: items[i]!.description.trim(),
+          preconditions: planLines(
+            reviewText[`${i}:preconditions`] ??
+              (items[i]!.preconditions ?? []).join("\n"),
+            10,
+          ),
+          steps: planLines(
+            reviewText[`${i}:steps`] ?? (items[i]!.steps ?? []).join("\n"),
+            20,
+          ),
+          expectedResults: planLines(
+            reviewText[`${i}:expectedResults`] ??
+              (items[i]!.expectedResults ?? []).join("\n"),
+            10,
+          ),
         })),
       ...(instruction.trim() ? { instruction: instruction.trim() } : {}),
     });
@@ -150,6 +180,65 @@ export function PlanCard({
                         })
                       }
                     />
+                    <details className="ai-plan-details">
+                      <summary>
+                        Ön koşullar, test adımları ve beklenen sonuçlar
+                      </summary>
+                      <label>
+                        Ön koşullar (satır başına bir koşul)
+                        <textarea
+                          aria-label={`Test ${i + 1} ön koşulları`}
+                          rows={2}
+                          disabled={!canEdit}
+                          value={
+                            reviewText[`${i}:preconditions`] ??
+                            (item.preconditions ?? []).join("\n")
+                          }
+                          onChange={(e) =>
+                            setReviewText((current) => ({
+                              ...current,
+                              [`${i}:preconditions`]: e.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        Test adımları (satır başına bir adım)
+                        <textarea
+                          aria-label={`Test ${i + 1} adımları`}
+                          rows={3}
+                          disabled={!canEdit}
+                          value={
+                            reviewText[`${i}:steps`] ??
+                            (item.steps ?? []).join("\n")
+                          }
+                          onChange={(e) =>
+                            setReviewText((current) => ({
+                              ...current,
+                              [`${i}:steps`]: e.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        Beklenen sonuçlar (satır başına bir sonuç)
+                        <textarea
+                          aria-label={`Test ${i + 1} beklenen sonuçları`}
+                          rows={2}
+                          disabled={!canEdit}
+                          value={
+                            reviewText[`${i}:expectedResults`] ??
+                            (item.expectedResults ?? []).join("\n")
+                          }
+                          onChange={(e) =>
+                            setReviewText((current) => ({
+                              ...current,
+                              [`${i}:expectedResults`]: e.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                    </details>
                     <small>
                       {item.pages.length
                         ? `Sayfalar: ${item.pages.map(path).join(", ")}`

@@ -1,5 +1,46 @@
 # Devam noktası — 19 Ekim 2026
 
+## 24 Ekim 2026 — AI plan ayrıntıları, keşif güvenliği ve Windows 11 regresyonu
+
+- **AI Test Plan:** Ön koşullar, insan-okur test adımları ve beklenen sonuçlar
+  şemaya, model promptuna ve açılır plan editörüne eklendi. Seçimde yapılan
+  değişiklikler `ai_generate` payload'una taşınır; eski planlar boş liste
+  varsayılanlarıyla açılır. Üst sınır tutarlı şekilde 15 öneridir.
+- **Plan seçim bütünlüğü:** İstemci `sourceIndex` yollar, API kayıtlı plandaki
+  index/kategori/tekillik üyeliğini doğrular. Eski istemciler yalnızca
+  orijinal başlık+kategori eşleşmesiyle çalışır.
+- **Güvenli keşif:** Tıklanmadan önce gerçek gözlenen kontrolün etiketi ve
+  sayfa URL'iyle silme/ödeme/son checkout/ayar kaydı filtrelenir.
+  `unsafe_action` ile görünür durdurma nedeni bırakılır. Henüz kapsamlı
+  niyet/işlem sınıflandırıcısının yerini tutmaz.
+- **Windows test altyapısı:** `tests/process-tree.ts` ile süreç grubu
+  temizliği Windows `taskkill /T /F` ve Unix negatif PID olarak ayrıldı;
+  E2E Chromium yolu Playwright kurulumundan bulunur. Çalışan geliştirme
+  servislerinin PID'lerine dokunmayan test temizliği sağlanır.
+- **Cross-platform format:** Windows CRLF checkout ile Linux LF arasında
+  yanlış format uyarıları için `.prettierrc.json` `endOfLine:auto` eklendi.
+- **Nihai yerel doğrulama:** Node 26.12.1 (desteklenen 24.x dışı),
+  `pnpm format:check` PASS, `pnpm typecheck` PASS,
+  `pnpm test` **50/50**, `pnpm build` PASS,
+  `pnpm test:e2e` **13/13** (plan seçim index'i dahil).
+  `pnpm audit --prod`: bilinen zafiyet yok.
+- **Sabit port çakışması:** Paralel test dosyalarının ortak
+  fixture/provider portu yüzünden nadiren yanlış `TARGET_NAVIGATION_FAILED`
+  ürettiği doğrulandı; `pnpm test` artık dosyaları
+  `--test-concurrency=1` ile izole sırada çalıştırıyor.
+- **Gerçek UI:** Bir Chromium oturumunda Elementler arama/filtre alanları
+  390/600/800/1050/1440 px için taşma olmadan doğrulandı. Düzen
+  kanıtları: `docs/evidence/test-cases/element-filters-390.png` ve
+  `element-filters-800.png` (yalnız filtre bölümleri, hassas veri yok).
+  Mock provider ile plan adımlarının görüntüsü:
+  `docs/evidence/test-cases/plan-review-fields.png`.
+- **Analiz ve roadmap:** `docs/product/10-GAP-AND-ACCEPTANCE-2026-10-24.md`
+  altı çıktıyı ve tamamlanmayan ürün gereksinimlerini ayırıyor.
+- **Açık kalanlar:** Live video yayını, daha güçlü işlem izni modeli,
+  DNS/SSRF pinleme, iki suite veri yolunun konsolidasyonu, reusable step
+  tasarımcısı, Node 24 üstünde yeniden doğrulama ve dış AI ile SauceDemo
+  senaryolarının bağımsız kanıtı.
+
 ## 24 Ekim 2026 — AI Elementler ekranı responsive düzenleme
 
 - Açıklama kısaltıldı; ayrıntılı kayıt/onay kuralları erişilebilir
@@ -22,7 +63,6 @@
   servislerin alt süreçlerini, Unix'te süreç gruplarını kapatır.
 - Windows 11 yerel doğrulaması bekliyor; Node 24.x gerekli. CI kontrolü
   bu değişiklikten sonraki workflow sonucu ile doğrulanacak.
-
 
 ## 22 Ekim 2026 — Keşif önce test planı önerir; testler seçimle oluşur
 

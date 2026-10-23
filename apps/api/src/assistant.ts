@@ -21,6 +21,7 @@ import {
 import { DomainError, type Actor } from "../../../packages/domain/src/index";
 import {
   actionTarget,
+  aiTestPlanSchema,
   aiSuiteSchema,
   planSelectionSchema,
   suiteElementKeys,
@@ -820,6 +821,31 @@ export function registerAssistant(
           "Bu taslağın test planı yok.",
           409,
         );
+      const proposed = aiTestPlanSchema.parse(JSON.parse(plan.plan));
+      const chosen = new Set<number>();
+      for (const item of selection.items) {
+        // Legacy clients may not send sourceIndex, but then the unedited
+        // original title and category must identify the proposed item.
+        const index =
+          item.sourceIndex ??
+          proposed.items.findIndex(
+            (candidate, candidateIndex) =>
+              candidate.title === item.title &&
+              candidate.category === item.category &&
+              !chosen.has(candidateIndex),
+          );
+        if (
+          index < 0 ||
+          chosen.has(index) ||
+          proposed.items[index]?.category !== item.category
+        )
+          throw new DomainError(
+            "PLAN_SELECTION_INVALID",
+            "Seçilen test kayıtlı planda bulunmuyor veya tekrar seçilmiş.",
+            409,
+          );
+        chosen.add(index);
+      }
       if (!["planned", "ready", "failed"].includes(draft.status as string))
         throw new DomainError("DRAFT_NOT_READY", "Taslak hâlâ işleniyor.", 409);
       const source = store.db

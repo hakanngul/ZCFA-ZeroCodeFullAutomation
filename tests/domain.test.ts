@@ -13,6 +13,15 @@ import {
   businessProjection,
   flowProjection,
 } from "../packages/domain/src/projections";
+import {
+  unsafeExplorationClick,
+  type ObservedElement,
+} from "../packages/assistant/src/agent";
+import {
+  aiTestPlanSchema,
+  planSelectionSchema,
+  planLimits,
+} from "../packages/assistant/src/spec";
 
 test("all views preserve assertion targets and expected text from the same definition", () => {
   const input = definition();
@@ -112,4 +121,97 @@ test("target policy accepts only exact local fixture routes", () => {
     `${fixtureOrigin}/login?variant=unknown`,
   ])
     assert.throws(() => assertFixtureUrl(url), /hedef|demo|parametre/i);
+});
+
+test("test plans carry reviewable steps and expectations without breaking old drafts", () => {
+  const item = {
+    title: "Başarılı giriş",
+    category: "positive" as const,
+    area: "Giriş",
+    description: "Giriş bilgileri girilir ve ana sayfa görünür.",
+    pages: ["https://demo.example/login"],
+    testData: ["{{EMAIL}}"],
+    feasible: true,
+  };
+  const old = aiTestPlanSchema.parse({ summary: "Keşif", items: [item] });
+  assert.deepEqual(old.items[0]?.steps, []);
+  assert.deepEqual(old.items[0]?.expectedResults, []);
+  const review = aiTestPlanSchema.parse({
+    summary: "Keşif",
+    items: [
+      {
+        ...item,
+        preconditions: ["Test hesabı hazır"],
+        steps: ["E-posta alanını doldur", "Giriş butonunu tıkla"],
+        expectedResults: ["Dashboard görünür"],
+      },
+    ],
+  });
+  const selected = planSelectionSchema.parse({
+    items: [
+      {
+        sourceIndex: 0,
+        title: item.title,
+        category: item.category,
+        description: item.description,
+        preconditions: review.items[0]!.preconditions,
+        steps: review.items[0]!.steps,
+        expectedResults: review.items[0]!.expectedResults,
+      },
+    ],
+  });
+  assert.deepEqual(selected.items[0]!.steps, review.items[0]!.steps);
+  assert.equal(selected.items[0]!.sourceIndex, 0);
+  assert.equal(
+    aiTestPlanSchema.safeParse({
+      summary: "Too many",
+      items: Array.from({ length: planLimits.items + 1 }, () => item),
+    }).success,
+    false,
+  );
+});
+
+test("exploration never auto-clicks a destructive or final checkout action", () => {
+  const control = (text: string): ObservedElement => ({
+    tag: "button",
+    text,
+    role: "button",
+    type: "submit",
+    locator: { kind: "testId", value: text.toLowerCase().replace(/ /g, "-") },
+  });
+  for (const text of ["Delete account", "Pay Now", "Siparişi tamamla"]) {
+    assert.equal(
+      unsafeExplorationClick(control(text), "https://demo.example/"),
+      true,
+    );
+  }
+  assert.equal(
+    unsafeExplorationClick(
+      control("Finish"),
+      "https://demo.example/checkout/step-two",
+    ),
+    true,
+  );
+  assert.equal(
+    unsafeExplorationClick(
+      control("Finish"),
+      "https://demo.example/checkout-step-two.html",
+    ),
+    true,
+  );
+  assert.equal(
+    unsafeExplorationClick(
+      control("Save"),
+      "https://demo.example/account/settings",
+    ),
+    true,
+  );
+  assert.equal(
+    unsafeExplorationClick(control("Login"), "https://demo.example/login"),
+    false,
+  );
+  assert.equal(
+    unsafeExplorationClick(control("Checkout"), "https://demo.example/cart"),
+    false,
+  );
 });

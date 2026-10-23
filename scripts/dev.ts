@@ -39,11 +39,10 @@ function terminate(child: ChildProcess, signal: NodeJS.Signals) {
   if (!child.pid) return;
   if (onWindows) {
     // Kill the process tree without opening another console window.
-    const killer = spawn(
-      "taskkill",
-      ["/PID", String(child.pid), "/T", "/F"],
-      { stdio: "ignore", windowsHide: true },
-    );
+    const killer = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
     killer.on("error", () => undefined);
     return;
   }
@@ -60,8 +59,7 @@ function stop(code: number) {
   stopping = true;
   for (const child of processes) terminate(child, "SIGTERM");
   setTimeout(() => {
-    if (!onWindows)
-      for (const child of processes) terminate(child, "SIGKILL");
+    if (!onWindows) for (const child of processes) terminate(child, "SIGKILL");
     process.exit(code);
   }, 3000).unref();
 }

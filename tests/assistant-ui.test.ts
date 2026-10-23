@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { detachedTestProcess, stopTestProcess } from "./process-tree";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, mkdir } from "node:fs/promises";
@@ -38,6 +39,13 @@ test(
                       area: "Giriş",
                       description:
                         "Yanlış e-posta ve parola ile giriş denenir; hata mesajı görünür.",
+                      preconditions: ["Giriş sayfası açık"],
+                      steps: [
+                        "Yanlış e-posta gir",
+                        "Yanlış parola gir",
+                        "Giriş yap",
+                      ],
+                      expectedResults: ["Hata mesajı görünür"],
                       pages: ["http://127.0.0.1:4100/login"],
                       testData: ["Yanlış e-posta", "Yanlış parola"],
                       feasible: true,
@@ -125,7 +133,7 @@ test(
             ]
           : ["--import", "tsx", script],
         {
-          detached: true,
+          detached: detachedTestProcess,
           stdio: "ignore",
           env: {
             ...process.env,
@@ -162,7 +170,8 @@ test(
         ready("http://127.0.0.1:4100/health"),
       ]);
       browser = await chromium.launch({
-        executablePath: process.env.ZC_CHROMIUM_PATH ?? "/usr/bin/chromium",
+        executablePath:
+          process.env.ZC_CHROMIUM_PATH ?? chromium.executablePath(),
         headless: true,
       });
       const page = await browser.newPage({
@@ -296,7 +305,9 @@ test(
               overflow: filter.scrollWidth > filter.clientWidth + 1,
               outside: labels.some((label) => {
                 const rect = label.getBoundingClientRect();
-                return rect.left < bounds.left - 1 || rect.right > bounds.right + 1;
+                return (
+                  rect.left < bounds.left - 1 || rect.right > bounds.right + 1
+                );
               }),
             };
           });
@@ -388,6 +399,19 @@ test(
         false,
       );
       await page.getByText("Eksik bilgi: Geçerli kullanıcı").waitFor();
+      const planDetails = page.locator(".ai-plan-details").first();
+      await planDetails.locator("summary").click();
+      assert.equal(
+        await page.getByLabel("Test 1 adımları").inputValue(),
+        "Yanlış e-posta gir\nYanlış parola gir\nGiriş yap",
+      );
+      await page
+        .getByLabel("Test 1 beklenen sonuçları")
+        .fill("Hata mesajı görünür\nGiriş sayfasında kalınır");
+      assert.match(
+        await page.getByLabel("Test 1 beklenen sonuçları").inputValue(),
+        /Giriş sayfasında kalınır/,
+      );
       await page.locator(".ai-plan").screenshot({
         path: join(evidence, "plan.png"),
       });
@@ -444,7 +468,7 @@ test(
       await browser?.close();
       for (const child of processes)
         try {
-          if (child.pid) process.kill(-child.pid, "SIGTERM");
+          if (child.pid) stopTestProcess(child.pid, "SIGTERM");
         } catch {}
       await provider.close();
     }

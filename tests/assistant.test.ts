@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { detachedTestProcess, stopTestProcess } from "./process-tree";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -248,7 +249,7 @@ test(
     const processes: ChildProcess[] = [];
     function start(script: string) {
       const child = spawn(process.execPath, ["--import", "tsx", script], {
-        detached: true,
+        detached: detachedTestProcess,
         stdio: "ignore",
         env: { ...process.env, ZC_DATA_DIR: dir },
       });
@@ -1043,7 +1044,7 @@ test(
     } finally {
       for (const p of processes)
         try {
-          if (p.pid) process.kill(-p.pid, "SIGTERM");
+          if (p.pid) stopTestProcess(p.pid, "SIGTERM");
         } catch {}
       await app.close();
       store.close();
@@ -1340,7 +1341,7 @@ test(
     const start = (script: string) =>
       processes.push(
         spawn(process.execPath, ["--import", "tsx", script], {
-          detached: true,
+          detached: detachedTestProcess,
           stdio: "ignore",
           env: { ...process.env, ZC_DATA_DIR: dir },
         }),
@@ -1546,7 +1547,7 @@ test(
     } finally {
       for (const p of processes)
         try {
-          if (p.pid) process.kill(-p.pid, "SIGTERM");
+          if (p.pid) stopTestProcess(p.pid, "SIGTERM");
         } catch {}
       await app.close();
       store.close();
@@ -1569,7 +1570,7 @@ test(
     const fixture = spawn(
       process.execPath,
       ["--import", "tsx", "tests/fixtures/server.ts"],
-      { detached: true, stdio: "ignore" },
+      { detached: detachedTestProcess, stdio: "ignore" },
     );
     const browser = await launchBrowser();
     try {
@@ -1757,7 +1758,7 @@ test(
     } finally {
       await browser.close();
       try {
-        if (fixture.pid) process.kill(-fixture.pid, "SIGTERM");
+        if (fixture.pid) stopTestProcess(fixture.pid, "SIGTERM");
       } catch {}
       rmSync(dir, { recursive: true, force: true });
     }
@@ -1888,7 +1889,7 @@ test(
     const start = (script: string) =>
       processes.push(
         spawn(process.execPath, ["--import", "tsx", script], {
-          detached: true,
+          detached: detachedTestProcess,
           stdio: "ignore",
           env: { ...process.env, ZC_DATA_DIR: dir },
         }),
@@ -2081,7 +2082,7 @@ test(
     } finally {
       for (const p of processes)
         try {
-          if (p.pid) process.kill(-p.pid, "SIGTERM");
+          if (p.pid) stopTestProcess(p.pid, "SIGTERM");
         } catch {}
       await app.close();
       store.close();
@@ -3730,7 +3731,7 @@ test(
     const fixture = spawn(
       process.execPath,
       ["--import", "tsx", "tests/fixtures/server.ts"],
-      { detached: true, stdio: "ignore" },
+      { detached: detachedTestProcess, stdio: "ignore" },
     );
     const browser = await launchBrowser();
     try {
@@ -3831,7 +3832,7 @@ test(
     } finally {
       await browser.close();
       try {
-        if (fixture.pid) process.kill(-fixture.pid, "SIGTERM");
+        if (fixture.pid) stopTestProcess(fixture.pid, "SIGTERM");
       } catch {}
       rmSync(dir, { recursive: true, force: true });
     }

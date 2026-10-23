@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { detachedTestProcess, stopTestProcess } from "./process-tree";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -455,7 +456,7 @@ test(
         spawn(
           process.execPath,
           ["--import", "tsx", "tests/fixtures/server.ts"],
-          { detached: true, stdio: "ignore" },
+          { detached: detachedTestProcess, stdio: "ignore" },
         ),
       );
       await until(up, 15000);
@@ -531,6 +532,13 @@ test(
                       category: "positive",
                       area: "Giriş",
                       description: "Giriş yapılır, bakiye görünür.",
+                      preconditions: ["Demo hesabı hazır"],
+                      steps: [
+                        "Giriş sayfasını aç",
+                        "Formu doldur",
+                        "Giriş yap",
+                      ],
+                      expectedResults: ["Bakiye görünür"],
                       pages: [
                         "http://127.0.0.1:4100/login",
                         "http://127.0.0.1:4100/unseen",
@@ -612,7 +620,7 @@ test(
           process.execPath,
           ["--import", "tsx", "apps/worker/src/main.ts"],
           {
-            detached: true,
+            detached: detachedTestProcess,
             stdio: "ignore",
             env: { ...process.env, ZC_DATA_DIR: dir },
           },
@@ -876,6 +884,14 @@ test(
       assert.equal(plannedDraft.status, "planned");
       assert.equal(plannedDraft.definition, null);
       assert.equal(plannedDraft.plan.items.length, 2);
+      assert.deepEqual(plannedDraft.plan.items[0].steps, [
+        "Giriş sayfasını aç",
+        "Formu doldur",
+        "Giriş yap",
+      ]);
+      assert.deepEqual(plannedDraft.plan.items[0].expectedResults, [
+        "Bakiye görünür",
+      ]);
       // Pages that were not observed are dropped from the plan.
       assert.deepEqual(plannedDraft.plan.items[0].pages, [
         "http://127.0.0.1:4100/login",
@@ -890,6 +906,34 @@ test(
         (await call("GET", `${root}/test-suites`)).body.suites.length,
         2,
       );
+      const inventedSelection = await call(
+        "POST",
+        `${root}/ai/drafts/${plannedDraft.id}/generate`,
+        {
+          items: [
+            {
+              sourceIndex: 5,
+              title: "Plan dışında test",
+              category: "positive",
+              description: "Plan dışında üretilmemeli.",
+            },
+          ],
+        },
+      );
+      assert.equal(inventedSelection.status, 409);
+      assert.equal(inventedSelection.body.code, "PLAN_SELECTION_INVALID");
+      const duplicateSelection = await call(
+        "POST",
+        `${root}/ai/drafts/${plannedDraft.id}/generate`,
+        {
+          items: [
+            { sourceIndex: 0, title: "Birinci", category: "positive" },
+            { sourceIndex: 0, title: "İkinci", category: "positive" },
+          ],
+        },
+      );
+      assert.equal(duplicateSelection.status, 409);
+      assert.equal(duplicateSelection.body.code, "PLAN_SELECTION_INVALID");
       const noPlan = await call(
         "POST",
         `${root}/ai/drafts/${second.drafts[0].id}/generate`,
@@ -905,6 +949,9 @@ test(
               title: "Geçerli giriş bakiyeyi gösterir",
               category: "positive",
               description: "Giriş yapılır, bakiye görünür.",
+              preconditions: ["Demo hesabı hazır"],
+              steps: ["Giriş sayfasını aç", "Formu doldur", "Giriş yap"],
+              expectedResults: ["Bakiye görünür"],
             },
           ],
         },
@@ -935,6 +982,11 @@ test(
         )
         .get(plannedDraft.id) as { payload: string };
       assert.equal(JSON.parse(promptSent.payload).plan.items.length, 1);
+      assert.deepEqual(JSON.parse(promptSent.payload).plan.items[0].steps, [
+        "Giriş sayfasını aç",
+        "Formu doldur",
+        "Giriş yap",
+      ]);
 
       // Duplicate and delete; deletion keeps the run history.
       const copy = await call(
@@ -959,7 +1011,7 @@ test(
     } finally {
       for (const child of processes)
         try {
-          process.kill(-child.pid!, "SIGTERM");
+          stopTestProcess(child.pid, "SIGTERM");
         } catch {
           /* already stopped */
         }

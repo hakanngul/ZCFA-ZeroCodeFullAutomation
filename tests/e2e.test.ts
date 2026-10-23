@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { detachedTestProcess, stopTestProcess } from "./process-tree";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
@@ -72,7 +73,7 @@ test(
             ]
           : ["--import", "tsx", script, ...args],
         {
-          detached: true,
+          detached: detachedTestProcess,
           stdio: ["ignore", "pipe", "pipe"],
           env: {
             ...process.env,
@@ -88,7 +89,7 @@ test(
     }
     const stop = (p: ChildProcess) => {
       try {
-        if (p.pid) process.kill(-p.pid, "SIGTERM");
+        if (p.pid) stopTestProcess(p.pid, "SIGTERM");
       } catch {}
     };
     let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
@@ -108,7 +109,8 @@ test(
         async () => (await fetch("http://127.0.0.1:4100/health")).ok,
       );
       browser = await chromium.launch({
-        executablePath: process.env.ZC_CHROMIUM_PATH ?? "/usr/bin/chromium",
+        executablePath:
+          process.env.ZC_CHROMIUM_PATH ?? chromium.executablePath(),
         headless: true,
       });
       const page = await browser.newPage({
@@ -675,7 +677,7 @@ test(
       for (const child of processes)
         if (child.exitCode === null && child.signalCode === null) {
           try {
-            if (child.pid) process.kill(-child.pid, "SIGKILL");
+            if (child.pid) stopTestProcess(child.pid, "SIGKILL");
           } catch {}
         }
       await writeFile(join(evidenceDir, "services.log"), output.join(""));

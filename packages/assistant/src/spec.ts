@@ -192,13 +192,23 @@ export type AiSuite = z.infer<typeof aiSuiteSchema>;
  * Test plan proposed after a survey exploration (ADR 018): what the AI
  * would test, before any case or library element is created.
  */
-export const planLimits = { items: 20, selected: suiteLimits.scenarios };
+export const planLimits = { items: 15, selected: suiteLimits.scenarios };
 export const aiTestPlanItemSchema = z
   .object({
     title: z.string().trim().min(3).max(suiteLimits.scenarioTitleLength),
     category: z.enum(["positive", "negative", "edge"]),
     area: z.string().trim().min(1).max(60),
     description: z.string().trim().max(500),
+    /** Human-readable proposal only; executable actions are generated after approval. */
+    preconditions: z
+      .array(z.string().trim().min(1).max(250))
+      .max(10)
+      .default([]),
+    steps: z.array(z.string().trim().min(1).max(300)).max(20).default([]),
+    expectedResults: z
+      .array(z.string().trim().min(1).max(300))
+      .max(10)
+      .default([]),
     pages: z.array(z.string().max(1000)).max(8).default([]),
     testData: z.array(z.string().trim().min(1).max(120)).max(10).default([]),
     feasible: z.boolean().default(true),
@@ -220,6 +230,13 @@ export const planSelectionSchema = z
       .array(
         z
           .object({
+            /** Index into the original stored plan; title and text are editable. */
+            sourceIndex: z
+              .number()
+              .int()
+              .min(0)
+              .max(planLimits.items - 1)
+              .optional(),
             title: z
               .string()
               .trim()
@@ -227,6 +244,18 @@ export const planSelectionSchema = z
               .max(suiteLimits.scenarioTitleLength),
             category: z.enum(["positive", "negative", "edge"]),
             description: z.string().trim().max(500).default(""),
+            preconditions: z
+              .array(z.string().trim().min(1).max(250))
+              .max(10)
+              .optional(),
+            steps: z
+              .array(z.string().trim().min(1).max(300))
+              .max(20)
+              .optional(),
+            expectedResults: z
+              .array(z.string().trim().min(1).max(300))
+              .max(10)
+              .optional(),
           })
           .strict(),
       )
