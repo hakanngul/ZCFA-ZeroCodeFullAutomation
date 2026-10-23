@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
   approveCase,
+  caseDefinitionSchema,
   bindSuiteElements,
   caseRow,
   caseView,
@@ -140,6 +141,20 @@ const loginSuite = (withError = false) => ({
         ]
       : []),
   ],
+});
+
+test("case definitions reject duplicate step IDs but allow distinct IDs", () => {
+  const step = { id: "step-1", kind: "assertUrl", expected: `${shop}/` };
+  const definition = {
+    steps: [step, { ...step, expected: `${shop}/inventory` }],
+  };
+  assert.equal(caseDefinitionSchema.safeParse(definition).success, false);
+  assert.equal(
+    caseDefinitionSchema.safeParse({
+      steps: [step, { ...step, id: "step-2" }],
+    }).success,
+    true,
+  );
 });
 
 test("generated suites register only needed, verified elements and reuse them", () => {

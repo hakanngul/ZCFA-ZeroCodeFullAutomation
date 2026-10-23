@@ -113,7 +113,19 @@ export const caseDefinitionSchema = z
       .default([]),
     steps: z.array(caseStepSchema).min(1).max(20),
   })
-  .strict();
+  .strict()
+  .superRefine((definition, ctx) => {
+    const ids = new Set<string>();
+    definition.steps.forEach((step, index) => {
+      if (ids.has(step.id))
+        ctx.addIssue({
+          code: "custom",
+          path: ["steps", index, "id"],
+          message: "duplicate_step_id",
+        });
+      ids.add(step.id);
+    });
+  });
 export type CaseDefinition = z.infer<typeof caseDefinitionSchema>;
 export const caseCategories = ["positive", "negative", "edge"] as const;
 export const caseUpdateSchema = z

@@ -1,5 +1,12 @@
 # Devam noktası — 19 Ekim 2026
 
+## 24 Ekim 2026 — Test Case adım kimliği bütünlüğü
+
+- `caseDefinitionSchema` aynı Case içinde yinelenen `step.id` değerlerini reddeder. Böylece düzenleyici ve yürütme kanıtlarının adımları tekil kimlikle eşlemesi korunur.
+- Yeni regresyon: yinelenen ID reddedilir, farklı ID'lerle aynı işlem türü kabul edilir.
+- İlgili `tests/test-cases.test.ts` testleri 4/4 PASS; tam regresyon 51/51 PASS; format, typecheck ve production build PASS (Node 26.12.1). Desteklenen Node 24 doğrulaması ve yeni değişiklik sonrası E2E ayrı devam işidir.
+- Veri modeli konsolidasyonu, görsel reusable adımlar, canlı yayın ve gerçek dış provider ile uçtan uca doğrulama sonraki artımlarda ele alınacak.
+
 ## 24 Ekim 2026 — AI plan ayrıntıları, keşif güvenliği ve Windows 11 regresyonu
 
 - **AI Test Plan:** Ön koşullar, insan-okur test adımları ve beklenen sonuçlar
