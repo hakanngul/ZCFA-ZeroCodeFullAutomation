@@ -87,6 +87,8 @@ export function PlanCard({
     [plan.items],
   );
   const count = selected.size;
+  const feasibleCount = plan.items.filter((item) => item.feasible).length;
+  const excludedCount = plan.items.length - feasibleCount;
   const planned = status === "planned";
   const toggle = (i: number) =>
     setSelected((current) => {
@@ -128,6 +130,40 @@ export function PlanCard({
         <strong>Önerilen test planı · {plan.items.length} test</strong>
       </div>
       <p>{plan.summary}</p>
+      <div
+        className="ai-plan-review-toolbar"
+        aria-label="Test planı seçim araçları"
+      >
+        <span>
+          {feasibleCount} uygulanabilir · {excludedCount} eksik bilgi · {count}{" "}
+          seçili
+        </span>
+        <button
+          type="button"
+          className="secondary"
+          disabled={!canEdit || busy}
+          onClick={() =>
+            setSelected(
+              new Set(
+                plan.items
+                  .map((item, index) => (item.feasible ? index : -1))
+                  .filter((index) => index >= 0)
+                  .slice(0, maxSelected),
+              ),
+            )
+          }
+        >
+          Uygulanabilirleri seç
+        </button>
+        <button
+          type="button"
+          className="secondary"
+          disabled={!canEdit || busy || count === 0}
+          onClick={() => setSelected(new Set())}
+        >
+          Seçimi temizle
+        </button>
+      </div>
       {areas.map((area) => (
         <div key={area} className="ai-plan-area">
           <span className="ai-plan-area-name">{area}</span>

@@ -745,6 +745,20 @@
   gap: 8px;
   color: var(--green-dark);
 }
+.ai-plan-review-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ai-plan-review-toolbar span {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+.ai-plan-review-toolbar button {
+  font-size: 12px;
+}
 .ai-plan-area-name {
   display: block;
   font-size: 10px;

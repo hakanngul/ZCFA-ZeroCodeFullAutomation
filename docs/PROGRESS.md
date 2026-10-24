@@ -1,5 +1,12 @@
 # Devam noktası — 19 Ekim 2026
 
+## 24 Ekim 2026 — Test Plan toplu seçim arayüzü
+
+- AI Test Assistant plan kartına uygulanabilir/eksik bilgi/seçili öneri sayaçları ve **Uygulanabilirleri seç / Seçimi temizle** eylemleri eklendi.
+- Toplu seçim en fazla 10 senaryo sınırını korur; kullanıcı tek tek düzenleme ve onay akışına devam eder.
+- `pnpm typecheck` ve `pnpm build` PASS (ortam Node 26.12.1; proje Node 24 bekliyor).
+- Açık işler: E2E sonuçlarının teyidi, gerçek tarayıcı ekran kanıtı, suite modellerinin konsolidasyonu, AI plan-element bağlama bütünlüğü ve görsel step designer.
+
 ## 24 Ekim 2026 — Test Case adım kimliği bütünlüğü
 
 - `caseDefinitionSchema` aynı Case içinde yinelenen `step.id` değerlerini reddeder. Böylece düzenleyici ve yürütme kanıtlarının adımları tekil kimlikle eşlemesi korunur.
