@@ -625,6 +625,8 @@ function CaseEditor({
   const [testData, setTestData] = useState(testCase.definition.testData);
   const [steps, setSteps] = useState<StepDef[]>(testCase.definition.steps);
   const [library, setLibrary] = useState<LibraryElement[]>([]);
+  const [elementSearch, setElementSearch] = useState("");
+  const [elementPage, setElementPage] = useState("");
   const [runs, setRuns] = useState<CaseRun[]>([]);
   const [run, setRun] = useState<RunDetail | null>(null);
   const [error, setError] = useState("");
@@ -706,6 +708,39 @@ function CaseEditor({
     () => [...new Set(library.map((e) => e.pageUrl))],
     [library],
   );
+  const filteredLibrary = useMemo(
+    () =>
+      library.filter((element) => {
+        const query = elementSearch.trim().toLocaleLowerCase("tr");
+        return (
+          (!elementPage || element.pageUrl === elementPage) &&
+          (!query ||
+            `${element.name} ${element.label} ${element.elementKey} ${element.pageUrl}`
+              .toLocaleLowerCase("tr")
+              .includes(query))
+        );
+      }),
+    [library, elementSearch, elementPage],
+  );
+  const currentIssues = useMemo(() => {
+    const issues: string[] = [];
+    if (title.trim().length < 3) issues.push("Başlık en az 3 karakter olmalı.");
+    if (!steps.some((step) => step.kind.startsWith("assert")))
+      issues.push("En az bir doğrulama (assertion) adımı gerekli.");
+    steps.forEach((step, index) => {
+      if (elementKinds.has(step.kind) && !step.elementId)
+        issues.push(`Adım ${index + 1}: Element seçilmedi.`);
+      if (step.kind === "navigate" && !step.url?.trim())
+        issues.push(`Adım ${index + 1}: Hedef URL gerekli.`);
+      if (step.kind === "assertUrl" && !step.expected?.trim())
+        issues.push(`Adım ${index + 1}: Beklenen URL gerekli.`);
+      if (step.kind === "assertText" && !step.expected?.trim())
+        issues.push(`Adım ${index + 1}: Beklenen metin gerekli.`);
+      if (step.kind === "select" && !step.value?.trim())
+        issues.push(`Adım ${index + 1}: Seçilecek değer gerekli.`);
+    });
+    return issues;
+  }, [title, steps]);
   const stepElement = (stepId: string) =>
     testCase.steps.find((s) => s.id === stepId)?.element ?? null;
 
@@ -803,7 +838,10 @@ function CaseEditor({
     });
   const editable = canEdit && !busy;
   const runnable =
-    testCase.approval === "approved" && testCase.complete && !dirty;
+    testCase.approval === "approved" &&
+    testCase.complete &&
+    !dirty &&
+    !currentIssues.length;
 
   return (
     <div className="tc-editor" id={`case-editor-${testCase.id}`}>
@@ -830,7 +868,15 @@ function CaseEditor({
           <button
             className="secondary"
             aria-label="Düzenleyiciyi kapat"
-            onClick={onClose}
+            onClick={() => {
+              if (
+                !dirty ||
+                window.confirm(
+                  "Kaydedilmemiş değişiklikleri iptal edip çıkmak istiyor musunuz?",
+                )
+              )
+                onClose();
+            }}
           >
             <X size={14} />
           </button>
@@ -953,6 +999,29 @@ function CaseEditor({
             URL doğrulaması element istemez.
           </small>
         </div>
+        <div className="tc-element-tools">
+          <input
+            aria-label="Element kütüphanesinde ara"
+            placeholder="Element adı, anahtar veya sayfa ara"
+            value={elementSearch}
+            onChange={(e) => setElementSearch(e.target.value)}
+          />
+          <select
+            aria-label="Element sayfasına göre filtrele"
+            value={elementPage}
+            onChange={(e) => setElementPage(e.target.value)}
+          >
+            <option value="">Tüm sayfalar</option>
+            {pages.map((page) => (
+              <option key={page} value={page}>
+                {page}
+              </option>
+            ))}
+          </select>
+          <small>
+            {filteredLibrary.length} / {library.length} element
+          </small>
+        </div>
         <table className="tc-table tc-step-table">
           <thead>
             <tr>
@@ -1004,23 +1073,31 @@ function CaseEditor({
                           }
                         >
                           <option value="">— Element seçin —</option>
-                          {step.elementId && !element && shown && (
-                            <option value={step.elementId}>
-                              {shown.name} ({shown.elementKey})
-                            </option>
-                          )}
-                          {pages.map((page) => (
-                            <optgroup key={page} label={page}>
-                              {library
-                                .filter((e) => e.pageUrl === page)
-                                .map((e) => (
-                                  <option key={e.id} value={e.id}>
-                                    {e.name || e.label} ({e.elementKey})
-                                    {e.approved ? " ✓" : ""}
-                                  </option>
-                                ))}
-                            </optgroup>
-                          ))}
+                          {step.elementId &&
+                            shown &&
+                            !filteredLibrary.some(
+                              (e) => e.id === step.elementId,
+                            ) && (
+                              <option value={step.elementId}>
+                                {shown.name} ({shown.elementKey})
+                              </option>
+                            )}
+                          {pages
+                            .filter(
+                              (page) => !elementPage || elementPage === page,
+                            )
+                            .map((page) => (
+                              <optgroup key={page} label={page}>
+                                {filteredLibrary
+                                  .filter((e) => e.pageUrl === page)
+                                  .map((e) => (
+                                    <option key={e.id} value={e.id}>
+                                      {e.name || e.label} ({e.elementKey})
+                                      {e.approved ? " ✓" : ""}
+                                    </option>
+                                  ))}
+                              </optgroup>
+                            ))}
                         </select>
                         {shown ? (
                           <small>
@@ -1132,6 +1209,20 @@ function CaseEditor({
         >
           <Plus size={13} /> Adım ekle
         </button>
+      </div>
+      <div className="tc-live-check" role="status" aria-live="polite">
+        <strong>
+          {currentIssues.length
+            ? `Taslakta ${currentIssues.length} eksik var`
+            : "Taslak alanları hazır"}
+        </strong>
+        {currentIssues.length > 0 && (
+          <ul>
+            {currentIssues.map((issue, index) => (
+              <li key={index}>{issue}</li>
+            ))}
+          </ul>
+        )}
       </div>
       {testCase.issues.length > 0 && (
         <ul className="tc-issues" aria-label="Eksikler">

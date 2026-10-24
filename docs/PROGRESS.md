@@ -1,5 +1,13 @@
 # Devam noktası — 19 Ekim 2026
 
+## 24 Ekim 2026 — Test Case Designer: ilk kullanım iyileştirmesi
+
+- Case Editor adımlarına Element Registry için ad/anahtar/sayfa araması, sayfa filtresi ve sonuç sayacı eklendi. Filtre dışında kalan seçili element açılır listede korunur.
+- Kaydedilmemiş taslakta eksik element, URL, beklenen metin/değer ve assertion varlığı anlık kontrol edilir; sonuçlar adım numarasıyla gösterilir.
+- Düzenleyiciyi kapatırken kaydedilmemiş değişiklikler için kullanıcıya onay sorulur.
+- `pnpm typecheck`, `pnpm build` ve `pnpm test` (51/51) başarılı (Node 26.12.1, desteklenen 24.x dışında). Gerçek tarayıcı ekran kanıtı ve tam E2E doğrulaması açık iş.
+- Sonraki öncelik: Registry'de bulunmayan elementi bu akıştan oluşturma/keşfetme, validasyonu ortak API şemasına bağlama, gelişmiş Wait/assertion ve step reuse.
+
 ## 24 Ekim 2026 — Test Plan toplu seçim arayüzü
 
 - AI Test Assistant plan kartına uygulanabilir/eksik bilgi/seçili öneri sayaçları ve **Uygulanabilirleri seç / Seçimi temizle** eylemleri eklendi.

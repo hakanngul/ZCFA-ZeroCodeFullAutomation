@@ -125,6 +125,35 @@
   flex-direction: column;
   gap: 14px;
 }
+.tc-element-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+.tc-element-tools input {
+  flex: 2 1 230px;
+  min-width: 0;
+}
+.tc-element-tools select {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.tc-element-tools small {
+  color: var(--muted);
+}
+.tc-live-check {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+}
+.tc-live-check ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
 .tc-editor-head {
   display: flex;
   justify-content: space-between;
